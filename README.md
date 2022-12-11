@@ -106,7 +106,7 @@ version=0x1001// Daemon version for Store, Official version is always > 0x1000
 
 ## Themes
 
-- You can download custom themes released in the [Itemzflow Themes Repo](https://github.com/LightningMods/xxxxxxxx)
+- You can download custom themes released in the [Itemzflow Themes Repo](https://github.com/LightningMods/itemzflow-themes)
 - You can also make your own custom themes by following these instructions.
 
 #### IMPORTENT the Theme files HAVE to have the exact filename as listed below  
