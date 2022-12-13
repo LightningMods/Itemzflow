@@ -195,21 +195,47 @@ Syntax:
 { "type": "", "addr": "", "value": "" }
 ```
 
-Types:
+### Patch types
 
-- `byte`: 1 byte
-- `bytes16`: 2 bytes
-- `bytes32`: 4 bytes
-- `bytes64`: 8 bytes
-- `bytes`: array of bytes (no spaces)
-- `utf8`: utf8 string
-- `utf16`: utf16 string
+| `type`    | Info                      | Value (example)        |
+|-----------|---------------------------|------------------------|
+| `byte`    | Hex, 1 byte               | `"0x00"`               |
+| `bytes16` | Hex, 2 bytes              | `"0x0000"`             |
+| `bytes32` | Hex, 4 bytes              | `"0x00000000"`         |
+| `bytes64` | Hex, 8 bytes              | `"0x0000000000000000"` |
+| `bytes`   | Hex, any size (no spaces) | `"####"`               |
+| `float32` | Float, single             | `"1.0"`                |
+| `float64` | Float, double             | `"1.0"`                |
+| `utf8`    | String, UTF-8*            | `"string"`             |
+| `utf16`   | String, UTF-16*           | `"string"`             |
 
-Examples:
+* Note: Strings are automatically null terminated.
+
+#### Example patch
 
 ```json
-{ "type": "byte", "addr": "0x01271464", "value": "0x01" },
-{ "type": "bytes", "addr": "0x00402d90", "value": "31c0c3" }
+{
+  "patch": [
+    {
+      "title": "Example Game Title",
+      "app_titleid": [
+        "EXAMPLE01",
+        "EXAMPLE02"
+      ],
+      "app_ver": "00.34",
+      "app_elf": "eboot.bin",
+      "patch_ver": "1.0",
+      "name": "Example Name",
+      "author": "Example Author",
+      "note": "Example Note",
+      "patch_list": [
+        { "comment": "This is a code comment, improves code readability." },
+        { "type": "bytes", "addr": "0x00000000", "value": "0102030405060708", "comment": "Code comment at end of line is also supported." },
+        { "type": "utf8", "addr": "0x00000000", "value": "Hello World" }
+      ]
+    }
+  ]
+}
 ```
 
 ## Donations
