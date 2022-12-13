@@ -184,8 +184,8 @@ Invite: https://discord.gg/GvzDdx9GTc
 
 ## Game Patches
 
-- Downloads from [online database](https://github.com/illusion0001/console-game-patches) via the app or manual install via [zip file](https://assets.illusion0001.com/patch1.zip)
-- Supported formats: `yaml` filename must be `(TITLE_ID).json`, i.e `CUSA00547.json`
+- Downloads from [GoldHEN online database](https://github.com/GoldHEN/GoldHEN_Patch_Repository) via the app or manual install via [zip file](https://github.com/GoldHEN/GoldHEN_Patch_Repository/raw/gh-pages/patch1.zip)
+- Supported formats: `json` filename must be `(TITLE_ID).json`, i.e `CUSA00547.json`
 - json per game filepath: `/data/GoldHEN/patches/json/(TITLE_ID).json`
 
 ### Patch Syntax
