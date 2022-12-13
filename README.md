@@ -33,29 +33,27 @@ the ini file is either loaded by the app dir or from USB0 when the app is booted
 
 #### Settings Layout 
 
+| INI Key             | Description                                                 |
+|---------------------|-------------------------------------------------------------|
+| `Dumper_option`     | 0 = ALL  1 = BASE Game only 2 = Patch only                  |
+| `Sort_By`           | -1 is NA 0 = Alpha order by TID 1 = Alpha order by App Name |
+| `Sort_Cat`          | Sort category                                               |
+| `cover_message`     | Shows cover message on app startup                          |
+| `MP3_Path`          | FS Path to a folder of MP3s or a single MP3 to play on loop |
+| `Dumper_Path`       | Dump path                                                   |
+| `TTF_Font`          | TTF Font the store will try to use (embedded font on fail)  |
+| `Show_Buttons`      | Shows IF buttons on the screen                              |
+| `Enable_Theme`      | ONLY Active if you have a theme enabled                     |
+| `Image_path`        | background PNG image                                        |
+| `Reflections`       | Enables cover reflections in IF                             |
+| `Home_Redirection`  | Enables the Home Menu Redirect                              |
+| `Daemon_on_start`   | Disables the Daemon from auto connecting with the app       |
+| `Image_path`        | Background Image                                            |
+| `Show_install_prog` | Enables the Store PKG/APP install Progress                  |
 
-| INI Key      | Description |
-| ------------- | ------------- |
-| Dumper_option     |  0 = ALL  1 = BASE Game only 2 = Patch only  |
-| Sort_By     | -1 is NA 0 = Alpha order by TID 1 = Alpha order by App Name  |
-| Sort_Cat   | Sort category  |
-| cover_message     | Shows cover message on app startup  |
-| MP3_Path     | FS Path to a folder of MP3s or a single MP3 to play on loop  |
-| Dumper_Path    | Dump path  |
-| TTF_Font  | TTF Font the store will try to use (embedded font on fail)  |
-| Show_Buttons  | Shows IF buttons on the screen  |
-| Enable_Theme     | ONLY Active if you have a theme enabled  |
-| Image_path  | background PNG image  |
-| Reflections     | Enables cover reflections in IF  |
-| Home_Redirection  | Enables the Home Menu Redirect  |
-| Daemon_on_start  | Disables the Daemon from auto connecting with the app  |
-| Image_path  | Background Image  |
-| Show_install_prog  | Enables the Store PKG/APP install Progress  |
+#### setting.ini example
 
-
-#### setting.ini example 
-
-```
+```ini
 [Settings]
 Dumper_option=0 
 Sort_By=-1
@@ -77,7 +75,6 @@ Show_install_prog=1
 - If the app crashes or mentions "a FATAL Signal" send this log to us via the discord below or via GH Issues
 `/user/app/ITEM00001/logs/itemzflow_app.log`
 
-
 ## Daemon
 
 The itemz daemon is installed when you open the app for the first time at `/system/vsh/app/ITEM00002`
@@ -86,7 +83,7 @@ it gets Updated ONLY by the Itemzflwo
 The daemon settings file is ONLY for internal use by the Store devs
 however it also has a ini at `/system/vsh/app/ITEM00002/daemon.ini` with the following ini values
 
-```
+```ini
 [Daemon]
 version=0x1001// Daemon version for Store, Official version is always > 0x1000
 ```
@@ -109,43 +106,42 @@ version=0x1001// Daemon version for Store, Official version is always > 0x1000
 - You can download custom themes released in the [Itemzflow Themes Repo](https://github.com/LightningMods/itemzflow-themes)
 - You can also make your own custom themes by following these instructions.
 
-#### IMPORTENT the Theme files HAVE to have the exact filename as listed below  
+#### IMPORTANT the Theme files must HAVE the exact filename as listed below  
 
-| Filename      | Description |
-| ------------- | ------------- |
-| btn_o.png     | O Button (67x68)  |
-| btn_x.png     | X Button (67x68)  |
-| btn_tri.png   | Triangle Button (67x68)  |
-| btn_sq.png     | square Button (67x68)  |
-| btn_r1.png     | R1 Button (309x152)  |
-| btn_l1.png     | L1 Button (120x59)  |
-| btn_l2.png  | L2 Button (120x105)  |
-| btn_options.png  | Options Button (145x84)  |
-| btn_up.png     | D-Pad Up Button (32x32)  |
-| btn_down.png  | D-Pad Down Button (32x32)  |
-| btn_left.png     | D-Pad Left Button (32x32)  |
-| btn_right.png  | D-Pad Right Button (32x32)  |
-| font.ttf  | Theme Font  |
-| background.png  | Background Image  |
-| shader.bin  | PS4 GLES Compiled Shader  |
-| theme.ini | Theme Info  |
+| Filename          | Description                |
+|-------------------|----------------------------|
+| `btn_o.png`       | O Button (67x68)           |
+| `btn_x.png`       | X Button (67x68)           |
+| `btn_tri.png`     | Triangle Button (67x68)    |
+| `btn_sq.png`      | square Button (67x68)      |
+| `btn_r1.png`      | R1 Button (309x152)        |
+| `btn_l1.png`      | L1 Button (120x59)         |
+| `btn_l2.png`      | L2 Button (120x105)        |
+| `btn_options.png` | Options Button (145x84)    |
+| `btn_up.png`      | D-Pad Up Button (32x32)    |
+| `btn_down.png`    | D-Pad Down Button (32x32)  |
+| `btn_left.png`    | D-Pad Left Button (32x32)  |
+| `btn_right.png`   | D-Pad Right Button (32x32) |
+| `font.ttf`        | Theme Font                 |
+| `background.png`  | Background Image           |
+| `shader.bin`      | PS4 GLES Compiled Shader   |
+| `theme.ini`       | Theme Info                 |
 
 #### Theme INI Config 
 
+| INI Key | Description                                      |
+|---------|--------------------------------------------------|
+| Name    | Theme Name                                       |
+| Author  | Who Made it                                      |
+| Date    | Date it was made on                              |
+| Version | Theme Version Number                             |
+| Image   | 1 if your Theme has a background image, 0 if not |
+| Font    | 1 = Theme has font.ttf 0 = It doesnt             |
+| Shader  | 1 = Has Shader bin 0 = It doesnt                 |
 
-| INI Key      | Description |
-| ------------- | ------------- |
-| Name     | Theme Name  |
-| Author     | Who Made it  |
-| Date   | Date it was made on  |
-| Version     | Theme Version Number |
-| Image     | 1 if your Theme has a background image, 0 if not  |
-| Font     | 1 = Theme has font.ttf 0 = It doesnt |
-| Shader     | 1 = Has Shader bin 0 = It doesnt  |
+#### Example Theme config
 
-
-#### Example Theme config 
-```
+```ini
 [THEME]
 Name=Example Theme
 Author=Example Author
@@ -159,24 +155,22 @@ Shader=0
 
 ## App logs and their paths
 
-| Service      | PS4 Path |
-| ------------- | ------------- |
-| Itemzflow main app     | /user/app/ITEM00001/logs/itemzflow_app.log  |
-| Dumper    | /user/app/ITEM00001/logs/if_dumper.log  |
-| Itemz Loader   | /user/app/ITEM00001/logs/loader.log  |
-| Itemz Daemon   | /data/itemzflow_daemon/daemon.log |
-| libfuse     | /user/app/ITEM00001/logs/libfuse.log  |
+| Service            | PS4 Path                                     |
+|--------------------|----------------------------------------------|
+| Itemzflow main app | `/user/app/ITEM00001/logs/itemzflow_app.log` |
+| Dumper             | `/user/app/ITEM00001/logs/if_dumper.log`     |
+| Itemz Loader       | `/user/app/ITEM00001/logs/loader.log`        |
+| Itemz Daemon       | `/data/itemzflow_daemon/daemon.log`          |
+| libfuse            | `/user/app/ITEM00001/logs/libfuse.log`       |
 
 #### On USB (only on failure or crash) 
 
-| Service      | USB Path |
-| ------------- | ------------- |
-| Itemzflow main app     | /mnt/usb<USB_NUMBER>/itemzflow/crash.log  |
-| Dumper    | /mnt/usb<USB_NUMBER>/itemzflow/dumper.log  |
-| Itemz Loader   | /usb0/itemzflow/loader.log  |
-| Itemz Daemon   | /mnt/usb0/itemzflow/daemon.log |
-
-
+| Service            | USB Path                                    |
+|--------------------|---------------------------------------------|
+| Itemzflow main app | `/mnt/usb<USB_NUMBER>/itemzflow/crash.log`  |
+| Dumper             | `/mnt/usb<USB_NUMBER>/itemzflow/dumper.log` |
+| Itemz Loader       | `/mnt/usb<USB_NUMBER>/itemzflow/loader.log` |
+| Itemz Daemon       | `/mnt/usb<USB_NUMBER>/itemzflow/daemon.log` |
 
 ## Official Discord server
 
