@@ -106,26 +106,26 @@ version=0x1001// Daemon version for Store, Official version is always > 0x1000
 - You can download custom themes released in the [Itemzflow Themes Repo](https://github.com/LightningMods/itemzflow-themes)
 - You can also make your own custom themes by following these instructions.
 
-#### IMPORTENT the Theme files HAVE to have the exact filename as listed below  
+#### IMPORTANT the Theme files must HAVE the exact filename as listed below  
 
-| Filename        | Description                |
-|-----------------|----------------------------|
-| btn_o.png       | O Button (67x68)           |
-| btn_x.png       | X Button (67x68)           |
-| btn_tri.png     | Triangle Button (67x68)    |
-| btn_sq.png      | square Button (67x68)      |
-| btn_r1.png      | R1 Button (309x152)        |
-| btn_l1.png      | L1 Button (120x59)         |
-| btn_l2.png      | L2 Button (120x105)        |
-| btn_options.png | Options Button (145x84)    |
-| btn_up.png      | D-Pad Up Button (32x32)    |
-| btn_down.png    | D-Pad Down Button (32x32)  |
-| btn_left.png    | D-Pad Left Button (32x32)  |
-| btn_right.png   | D-Pad Right Button (32x32) |
-| font.ttf        | Theme Font                 |
-| background.png  | Background Image           |
-| shader.bin      | PS4 GLES Compiled Shader   |
-| theme.ini       | Theme Info                 |
+| Filename          | Description                |
+|-------------------|----------------------------|
+| `btn_o.png`       | O Button (67x68)           |
+| `btn_x.png`       | X Button (67x68)           |
+| `btn_tri.png`     | Triangle Button (67x68)    |
+| `btn_sq.png`      | square Button (67x68)      |
+| `btn_r1.png`      | R1 Button (309x152)        |
+| `btn_l1.png`      | L1 Button (120x59)         |
+| `btn_l2.png`      | L2 Button (120x105)        |
+| `btn_options.png` | Options Button (145x84)    |
+| `btn_up.png`      | D-Pad Up Button (32x32)    |
+| `btn_down.png`    | D-Pad Down Button (32x32)  |
+| `btn_left.png`    | D-Pad Left Button (32x32)  |
+| `btn_right.png`   | D-Pad Right Button (32x32) |
+| `font.ttf`        | Theme Font                 |
+| `background.png`  | Background Image           |
+| `shader.bin`      | PS4 GLES Compiled Shader   |
+| `theme.ini`       | Theme Info                 |
 
 #### Theme INI Config 
 
@@ -155,22 +155,22 @@ Shader=0
 
 ## App logs and their paths
 
-| Service            | PS4 Path                                   |
-|--------------------|--------------------------------------------|
-| Itemzflow main app | /user/app/ITEM00001/logs/itemzflow_app.log |
-| Dumper             | /user/app/ITEM00001/logs/if_dumper.log     |
-| Itemz Loader       | /user/app/ITEM00001/logs/loader.log        |
-| Itemz Daemon       | /data/itemzflow_daemon/daemon.log          |
-| libfuse            | /user/app/ITEM00001/logs/libfuse.log       |
+| Service            | PS4 Path                                     |
+|--------------------|----------------------------------------------|
+| Itemzflow main app | `/user/app/ITEM00001/logs/itemzflow_app.log` |
+| Dumper             | `/user/app/ITEM00001/logs/if_dumper.log`     |
+| Itemz Loader       | `/user/app/ITEM00001/logs/loader.log`        |
+| Itemz Daemon       | `/data/itemzflow_daemon/daemon.log`          |
+| libfuse            | `/user/app/ITEM00001/logs/libfuse.log`       |
 
 #### On USB (only on failure or crash) 
 
-| Service            | USB Path                                  |
-|--------------------|-------------------------------------------|
-| Itemzflow main app | /mnt/usb<USB_NUMBER>/itemzflow/crash.log  |
-| Dumper             | /mnt/usb<USB_NUMBER>/itemzflow/dumper.log |
-| Itemz Loader       | /usb0/itemzflow/loader.log                |
-| Itemz Daemon       | /mnt/usb0/itemzflow/daemon.log            |
+| Service            | USB Path                                    |
+|--------------------|---------------------------------------------|
+| Itemzflow main app | `/mnt/usb<USB_NUMBER>/itemzflow/crash.log`  |
+| Dumper             | `/mnt/usb<USB_NUMBER>/itemzflow/dumper.log` |
+| Itemz Loader       | `/mnt/usb<USB_NUMBER>/itemzflow/loader.log` |
+| Itemz Daemon       | `/mnt/usb<USB_NUMBER>/itemzflow/daemon.log` |
 
 ## Official Discord server
 
