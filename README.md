@@ -78,7 +78,7 @@ Show_install_prog=1
 ## Daemon
 
 The itemz daemon is installed when you open the app for the first time at `/system/vsh/app/ITEM00002`
-it gets Updated ONLY by the Itemzflwo
+it gets updated ONLY by Itemzflow
 
 The daemon settings file is ONLY for internal use by the Store devs
 however it also has a ini at `/system/vsh/app/ITEM00002/daemon.ini` with the following ini values
