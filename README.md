@@ -185,9 +185,8 @@ Invite: https://discord.gg/GvzDdx9GTc
 ## Game Patches
 
 - Downloads from [online database](https://github.com/illusion0001/console-game-patches) via the app or manual install via [zip file](https://assets.illusion0001.com/patch1.zip)
-- Supported formats: `yaml` filename must be `(TITLE_ID).yml, i.e CUSA00547.yml`
-- Startup patches only supports `eboot.bin` for now. PRs are very welcome to support games that use multple elf.
-- YML per game filepath: `/data/GoldHEN/patches/yml/(TITLE_ID).yml`
+- Supported formats: `yaml` filename must be `(TITLE_ID).json`, i.e `CUSA00547.json`
+- json per game filepath: `/data/GoldHEN/patches/json/(TITLE_ID).json`
 
 ### Patch Syntax
 
