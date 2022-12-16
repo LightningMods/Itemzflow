@@ -257,3 +257,4 @@ if you donate and dont want to the message anymore created this folder after don
 - BigBoss
 - [bucanero](https://github.com/bucanero) (Game Saves)
 - [illusion](https://github.com/illusion0001) (Game Patches/Trainers)
+- [Pharaoh2k](https://github.com/Pharaoh2k) (Apps/Games/DLCs Databases Recovery)
