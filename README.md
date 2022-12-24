@@ -237,7 +237,7 @@ Syntax:
 We accept the following methods
 
 - [Ko-fi](https://ko-fi.com/lightningmods)
-- BTC: 3MEuZAaA7gfKxh9ai4UwYgHZr5DVWfR6Lw
+- BTC: bc1qgclk220glhffjkgraju7d8xjlf7teks3cnwuu9
 
 if you donate and dont want to the message anymore created this folder after donating ``
 
