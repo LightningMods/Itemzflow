@@ -1,0 +1,21 @@
+#include <curl/curl.h>
+#include <stdarg.h> 
+
+
+CURLcode vsetopt(struct Curl_easy *data, CURLoption option, va_list param);
+
+CURLcode curl_easy_setopt(struct Curl_easy *data, CURLoption tag, ...)
+{
+  va_list arg;
+  CURLcode result;
+
+  if(!data)
+    return CURLE_BAD_FUNCTION_ARGUMENT;
+
+  va_start(arg, tag);
+
+  result = vsetopt(data, tag, arg);
+
+  va_end(arg);
+  return result;
+}

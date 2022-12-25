@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<psproject xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" fmt="gp4" version="1000">
+  <volume>
+    <volume_type>pkg_ps4_app</volume_type>
+    <volume_ts>2021-11-16 23:01:37</volume_ts>
+    <package content_id="IV0002-ITEM00001_00-STOREUPD00000000" passcode="00000000000000000000000000000000" storage_type="digital50" app_type="full" />
+    <chunk_info chunk_count="1" scenario_count="1">
+      <chunks>
+        <chunk id="0" layer_no="0" label="Chunk #0" />
+      </chunks>
+      <scenarios default_id="0">
+        <scenario id="0" type="sp" initial_chunk_count="1" label="Scenario #0">0</scenario>
+      </scenarios>
+    </chunk_info>
+  </volume>
+  <files img_no="0">
+    <file targ_path="langs/0/lang.ini" orig_path="langs/0/lang.ini" />
+    <file targ_path="langs/1/lang.ini" orig_path="langs/1/lang.ini" />
+    <file targ_path="langs/3/lang.ini" orig_path="langs/3/lang.ini" />
+    <file targ_path="langs/5/lang.ini" orig_path="langs/5/lang.ini" />
+    <file targ_path="langs/25/lang.ini" orig_path="langs/25/lang.ini" />
+    <file targ_path="sce_sys/icon0.png" orig_path="sce_sys/icon0.png" />
+    <file targ_path="sce_sys/param.sfo" orig_path="sce_sys/param.sfo" />
+    <file targ_path="assets/notis/error.png" orig_path="assets/notis/error.png" />
+    <file targ_path="assets/notis/game.png" orig_path="assets/notis/game.png" />
+    <file targ_path="assets/notis/game_usb.png" orig_path="assets/notis/game_usb.png" />
+    <file targ_path="assets/notis/info.png" orig_path="assets/notis/info.png" />
+    <file targ_path="assets/notis/kofi.png" orig_path="assets/notis/kofi.png" />
+    <file targ_path="assets/notis/success.png" orig_path="assets/notis/success.png" />
+    <file targ_path="assets/notis/warning.png" orig_path="assets/notis/warning.png" />
+	<file targ_path="assets/notis/profile.png" orig_path="assets/notis/profile.png" />
+    <file targ_path="assets/backgroundUnitOffline.png" orig_path="assets/backgroundUnitOffline.png" />
+    <file targ_path="assets/cover.png" orig_path="assets/cover.png" />
+    <file targ_path="assets/disc.png" orig_path="assets/disc.png" />
+    <file targ_path="assets/no_save.png" orig_path="assets/no_save.png" />
+    <file targ_path="assets/buttons/btn_o.png" orig_path="assets/buttons/btn_o.png" />
+    <file targ_path="assets/buttons/btn_options.png" orig_path="assets/buttons/btn_options.png" />
+    <file targ_path="assets/buttons/btn_sq.png" orig_path="assets/buttons/btn_sq.png" />
+    <file targ_path="assets/buttons/btn_tri.png" orig_path="assets/buttons/btn_tri.png" />
+    <file targ_path="assets/buttons/btn_X.png" orig_path="assets/buttons/btn_X.png" />
+    <file targ_path="assets/buttons/btn_down.png" orig_path="assets/buttons/btn_down.png" />
+    <file targ_path="assets/buttons/btn_l1.png" orig_path="assets/buttons/btn_l1.png" />
+    <file targ_path="assets/buttons/btn_l2.png" orig_path="assets/buttons/btn_l2.png" />
+    <file targ_path="assets/buttons/btn_left.png" orig_path="assets/buttons/btn_left.png" />
+    <file targ_path="assets/buttons/btn_r1.png" orig_path="assets/buttons/btn_r1.png" />
+    <file targ_path="assets/buttons/btn_right.png" orig_path="assets/buttons/btn_right.png" />
+    <file targ_path="assets/buttons/btn_up.png" orig_path="assets/buttons/btn_up.png" />
+    <file targ_path="assets/fonts/HelveticaWorld-Multi.ttf" orig_path="assets/fonts/HelveticaWorld-Multi.ttf" />
+    <file targ_path="assets/fonts/NotoSansJP-Regular.ttf" orig_path="assets/fonts/NotoSansJP-Regular.ttf" />
+    <file targ_path="eboot.bin" orig_path="../itemz-loader/bin/eboot.bin" />
+    <file targ_path="ItemzCore.self" orig_path="../itemzflow/bin/ItemzCore.self" />
+    <file targ_path="Media/curl.prx" orig_path="Media/curl.prx" />
+    <file targ_path="Media/jb.prx" orig_path="Media/jb.prx" />
+    <file targ_path="Media/rsa.pub" orig_path="Media/rsa.pub" />
+    <file targ_path="Media/rsa.prx" orig_path="Media/rsa.prx" />
+  </files>
+  <rootdir>
+    <dir targ_name="assets">
+      <dir targ_name="notis" />
+      <dir targ_name="buttons" />
+      <dir targ_name="fonts" />
+    </dir>
+    <dir targ_name="langs">
+      <dir targ_name="0" />
+      <dir targ_name="1" />
+      <dir targ_name="10" />
+      <dir targ_name="11" />
+      <dir targ_name="12" />
+      <dir targ_name="13" />
+      <dir targ_name="14" />
+      <dir targ_name="15" />
+      <dir targ_name="16" />
+      <dir targ_name="17" />
+      <dir targ_name="18" />
+      <dir targ_name="19" />
+      <dir targ_name="2" />
+      <dir targ_name="20" />
+      <dir targ_name="21" />
+      <dir targ_name="22" />
+      <dir targ_name="23" />
+      <dir targ_name="24" />
+      <dir targ_name="25" />
+      <dir targ_name="26" />
+      <dir targ_name="27" />
+      <dir targ_name="28" />
+      <dir targ_name="29" />
+      <dir targ_name="3" />
+      <dir targ_name="4" />
+      <dir targ_name="5" />
+      <dir targ_name="6" />
+      <dir targ_name="7" />
+      <dir targ_name="8" />
+      <dir targ_name="9" />
+    </dir>
+    <dir targ_name="sce_sys" />
+    <dir targ_name="Media" />
+  </rootdir>
+</psproject>

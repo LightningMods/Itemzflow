@@ -1,0 +1,37 @@
+
+# built stuff
+*.pkg
+*.bin
+*.oelf
+*.elf
+*.self
+*.suo
+*.log
+*.a
+*.o
+*.o.tmp
+
+.vs/ProjectSettings.json
+.vs/slnx.sqlite
+.vs/Store-GLES-iapps/v16/Browse.VC.db
+.vs/Store-GLES-iapps/v16/Browse.VC.db-shm
+.vs/Store-GLES-iapps/v16/Browse.VC.db-wal
+.vs/Store-GLES-iapps/v16/Browse.VC.opendb
+
+# unwanted data
+*.json
+*.sqlite
+*.ipch
+*.db
+*.db-wal
+*.db-shm
+*.opendb
+App Media-Assets/rsa.pub
+itemzflow/build_all_dev.sh
+*.id0
+*.id1
+*.nam
+*.id2
+*.til
+external/libfuse.zip
+itemzflow/source/test.c
