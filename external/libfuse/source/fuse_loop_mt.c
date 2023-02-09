@@ -16,30 +16,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <fuse.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <pthread.h>
 
-/* Environment var controlling the thread stack size */
-#define ENVNAME_THREAD_STACK "FUSE_THREAD_STACK"
-/* 
-Modified by F.KUMAGAE,  06/17/2015
-
----------------
-Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-*/
-#define SCE_DECI_FUSE_THR_PRIO_BASE        (SCE_ULPMGR_THREAD_PRIO_BASE)
-#define SCE_DECI_FUSE_THR_PRIO_WORK        (SCE_DECI_FUSE_THR_PRIO_BASE)
-
-/* 
-Modified by Y.ITO,  05/09/2017
-
----------------
-Copyright (c) 2017 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-#define SCE_DECI_FUSE_WORKER_THREAD_MAX    10
+#define FUSE_DEBUG 0
+#define FUSE_WORKER_THREAD_MAX    4
 
 struct fuse_worker {
 	struct fuse_worker *prev;
@@ -79,26 +62,24 @@ static void list_del_worker(struct fuse_worker *w)
 	next->prev = prev;
 }
 
+#define FUSE_PRIO_WORK 903
+int sceKernelSetBesteffort(int besteffort, int priority);
 static int fuse_start_thread(struct fuse_mt *mt);
 
 static void *fuse_do_work(void *data)
 {
 	struct fuse_worker *w = (struct fuse_worker *) data;
 	struct fuse_mt *mt = w->mt;
-/* 
-Modified by F.KUMAGAE,  06/17/2015
 
----------------
-Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-	sceKernelSetBesteffort(SCE_DECI_FUSE_THR_PRIO_WORK, 255);
+	sceKernelSetBesteffort(FUSE_PRIO_WORK, 255);
 
 	while (!fuse_session_exited(mt->se)) {
 		int isforget = 0;
 		struct fuse_chan *ch = mt->prevch;
 		int res;
+#if FUSE_DEBUG==1
+		libfuse_print("fuse_do_work");
+#endif
 
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 		res = fuse_chan_recv(&ch, w->buf, w->bufsize);
@@ -108,6 +89,7 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 		if (res <= 0) {
 			if (res < 0) {
 				fuse_session_exit(mt->se);
+				libfuse_print("fuse error exit");
 				mt->error = -1;
 			}
 			break;
@@ -115,6 +97,7 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 
 		pthread_mutex_lock(&mt->lock);
 		if (mt->exit) {
+			libfuse_print("exiting...");
 			pthread_mutex_unlock(&mt->lock);
 			return NULL;
 		}
@@ -126,27 +109,24 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 		if (((struct fuse_in_header *) w->buf)->opcode == FUSE_FORGET)
 			isforget = 1;
 
-/* 
-Modified by Y.ITO,  05/09/2017
 
----------------
-Copyright (c) 2017 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 		if (!isforget)
 			mt->numavail--;
-		if (mt->numavail == 0 && mt->numworker < SCE_DECI_FUSE_WORKER_THREAD_MAX)
+		if (mt->numavail == 0 && mt->numworker < FUSE_WORKER_THREAD_MAX)
 			fuse_start_thread(mt);
 		pthread_mutex_unlock(&mt->lock);
 
 		fuse_session_process(mt->se, w->buf, res, ch);
+#if FUSE_DEBUG==1
+		libfuse_print("processing...");
+#endif
 
 		pthread_mutex_lock(&mt->lock);
 		if (!isforget)
 			mt->numavail++;
-		if (mt->numavail > SCE_DECI_FUSE_WORKER_THREAD_MAX) {
+		if (mt->numavail > 3) {
 			if (mt->exit) {
+				libfuse_print("exiting...");
 				pthread_mutex_unlock(&mt->lock);
 				return NULL;
 			}
@@ -158,6 +138,7 @@ Copyright (c) 2017 Sony Interactive Entertainment Inc. All Rights Reserved.
 			pthread_detach(w->thread_id);
 			free(w->buf);
 			free(w);
+			libfuse_print("exiting...");
 			return NULL;
 		}
 		pthread_mutex_unlock(&mt->lock);
@@ -166,26 +147,17 @@ Copyright (c) 2017 Sony Interactive Entertainment Inc. All Rights Reserved.
 	sem_post(&mt->finish);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	pause();
+	libfuse_print("exiting thr...");
 
 	return NULL;
 }
 
 static int fuse_start_thread(struct fuse_mt *mt)
 {
-/* 
-Modified by F.KUMAGAE,  06/17/2015
 
----------------
-Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-//    struct sched_param sparam;
 	sigset_t oldset;
 	sigset_t newset;
 	int res;
-//	pthread_attr_t attr;
-//	char *stack_size;
 	struct fuse_worker *w = malloc(sizeof(struct fuse_worker));
 	if (!w) {
 		libfuse_print("fuse: failed to allocate worker structure");
@@ -201,28 +173,20 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 		return -1;
 	}
 	
-//	/* Override default stack size */
-//	scePthreadAttrInit(&attr);
-//	scePthreadAttrSetinheritsched(&attr, SCE_PTHREAD_EXPLICIT_SCHED);
-//	stack_size = getenv(ENVNAME_THREAD_STACK);
-//	if (stack_size && pthread_attr_setstacksize(&attr, atoi(stack_size)))
-//		libfuse_print("fuse: invalid stack size: %s", stack_size);
-
-	/* Disallow signal reception in worker threads */
 	sigemptyset(&newset);
 	sigaddset(&newset, SIGTERM);
 	sigaddset(&newset, SIGINT);
 	sigaddset(&newset, SIGHUP);
 	sigaddset(&newset, SIGQUIT);
 	pthread_sigmask(SIG_BLOCK, &newset, &oldset);
-//	res = pthread_create(&w->thread_id, &attr, fuse_do_work, w);
+
 	char Thrname[THREAD_NAME_MAXLEN];
-	snprintf(Thrname, THREAD_NAME_MAXLEN, SCE_DRFP_FUSEWORKTHREAD_NAME, mt->numworker);
-//	sparam.sched_priority = SCE_DECI_FUSE_THR_PRIO_WORK;
-//	scePthreadAttrSetschedparam(&attr, &sparam);
-	res = scePthreadCreate(&w->thread_id, NULL, fuse_do_work, w, Thrname);
+	snprintf(Thrname, THREAD_NAME_MAXLEN, "FUSE_Daemon_Thread_%i", mt->numworker);
+#if FUSE_DEBUG==1
+    libfuse_print("fuse: create thread: %s", Thrname);
+#endif
+	res = scePthreadCreate((ScePthread*)&w->thread_id, NULL, fuse_do_work, w, Thrname);
 	pthread_sigmask(SIG_SETMASK, &oldset, NULL);
-//	scePthreadAttrDestroy(&attr);
 	if (res != 0) {
 		libfuse_print("fuse: error creating thread: %s",
 			strerror(res));
@@ -275,7 +239,7 @@ int fuse_session_loop_mt(struct fuse_session *se)
 
 		for (w = mt.main.next; w != &mt.main; w = w->next)
 			scePthreadCancel(w->thread_id);
-//			pthread_cancel(w->thread_id);
+
 		mt.exit = 1;
 		pthread_mutex_unlock(&mt.lock);
 

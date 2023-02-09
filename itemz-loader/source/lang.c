@@ -121,7 +121,7 @@ bool LoadLangs(int LangCode)
 
         int error = ini_parse(tmp, load_lang_ini, stropts);
         if (error) {
-            logshit("Bad config file (first error on line %d)!\n", error);
+            logshit("Bad config file (first error on line %d)!", error);
             return false;
         }
         else

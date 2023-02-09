@@ -5,6 +5,9 @@
 
 ## Third-Party Libraries
 
+- [fuse-nfs](https://github.com/sahlberg/fuse-nfs) 
+- [libNFS](https://github.com/orbisdev/orbisdev-liborbisNfs)
+- [libfuse](https://github.com/libfuse/libfuse)
 - [FTPS4](https://github.com/xerpi/FTPS4) 
 - [dr_mp3](https://github.com/mackron/dr_libs/blob/master/dr_mp3.h) 
 - [liborbisAudio](https://github.com/orbisdev/orbisdev-liborbisAudio) 
@@ -20,7 +23,7 @@
 - [log.c](https://github.com/rxi/log.c)
 - [Game Dumper](https://github.com/Al-Azif/dumper-testing)
 - [libjbc](https://github.com/sleirsgoevy/ps4-libjbc)
-- [yaml-cpp](https://github.com/jbeder/yaml-cpp)
+- [pugixml](https://github.com/zeux/pugixml)
 - [taglib](https://github.com/taglib/taglib)
 - Libz
 
@@ -50,6 +53,7 @@ the ini file is either loaded by the app dir or from USB0 when the app is booted
 | `Daemon_on_start`   | Disables the Daemon from auto connecting with the app       |
 | `Image_path`        | Background Image                                            |
 | `Show_install_prog` | Enables the Store PKG/APP install Progress                  |
+| `Fuse_IP`           | PC NFS Share in format `nfs://IP/share_name`                |
 
 #### setting.ini example
 
@@ -69,6 +73,19 @@ Reflections=1
 Home_Redirection=1 
 Daemon_on_start=0 
 Show_install_prog=1 
+Fuse_IP=nfs://192.1.2.3/nfs_share
+```
+
+## NFS Share format
+
+the NFS formatted string can be entered in the app using the in-app keyboard or set in the settings.ini file
+
+```
+nfs://PC_IP//share_name
+```
+or if your share name is /
+```
+PC_IP
 ```
 
 ## Itemzflow Log
@@ -80,13 +97,8 @@ Show_install_prog=1
 The itemz daemon is installed when you open the app for the first time at `/system/vsh/app/ITEM00002`
 it gets updated ONLY by Itemzflow
 
-The daemon settings file is ONLY for internal use by the Store devs
-however it also has a ini at `/system/vsh/app/ITEM00002/daemon.ini` with the following ini values
-
-```ini
-[Daemon]
-version=0x1001// Daemon version for Store, Official version is always > 0x1000
-```
+The daemon folder is ONLY for internal use by the Itemzflow devs
+it is hash checked by the loader to ensure the daemon is always up to date with the PKG
 
 ## Dumper details
 
@@ -161,7 +173,7 @@ Shader=0
 | Dumper             | `/user/app/ITEM00001/logs/if_dumper.log`     |
 | Itemz Loader       | `/user/app/ITEM00001/logs/loader.log`        |
 | Itemz Daemon       | `/data/itemzflow_daemon/daemon.log`          |
-| libfuse            | `/user/app/ITEM00001/logs/libfuse.log`       |
+| libfuse            | `/data/itemzflow_daemon/libfuse.log`         |
 
 #### On USB (only on failure or crash) 
 
@@ -252,6 +264,7 @@ if you donate and dont want to the message anymore created this folder after don
 - [Masterzorag](https://twitter.com/masterzorag)
 - [Psxdev/BigBoss](https://twitter.com/psxdev)
 - [Specter](https://twitter.com/SpecterDev)
+- [SocraticBliss](https://twitter.com/SocraticBliss)
 - [Sleirsgoevy](https://github.com/sleirsgoevy/)
 - [AlAzif](https://github.com/al-azif)
 - BigBoss

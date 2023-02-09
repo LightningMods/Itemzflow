@@ -38,8 +38,7 @@
 #include <sstream>
 
 int HDD_count = -1;
-const char *SPECIAL_XMB_ICON_FOLDERS[] = {"/user/app/" APP_HOME_DATA_TID, "/user/app/" DEBUG_SETTINGS_TID};
-const char *SPECIAL_XMB_ICON_TID[] = {APP_HOME_DATA_TID, DEBUG_SETTINGS_TID};
+const char *SPECIAL_XMB_ICON_TID[] = {APP_HOME_DATA_TID, APP_HOME_HOST_TID, DEBUG_SETTINGS_TID};
 
 extern "C" bool if_exists(const char *path)
 {
@@ -100,8 +99,7 @@ static int app_info(void *, const char *s, const char *n,
 
     return 0;
 }
-
-bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER filter)
+bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER filter, bool for_fs_browser = false)
 {
     struct dirent *pDirent;
     DIR *pDir = NULL;
@@ -125,6 +123,7 @@ bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER
         if (strcmp(pDirent->d_name, ".") == 0 || strcmp(pDirent->d_name, "..") == 0)
             continue;
 
+        //log_info("d_name %s pDirent->d_type %i", pDirent->d_name, pDirent->d_type);
         // Dir is title_id, it WILL go through 3 filters
         // so lets assume they are vaild until the filters say otherwise
         if (pDirent->d_type == DT_DIR && filter != FS_MP3_ONLY) // MP3S ONLY NO DIR NAMES
@@ -175,38 +174,70 @@ bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER
         log_info("closedir failed %s", strerror(errno));
         return false;
     }
+
+    if(for_fs_browser){
+        // if we are in the fs browser we want to sort the entries
+        std::sort(cvEntries.begin(), cvEntries.end(), [](std::string a, std::string b)
+        { 
+            std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+            std::transform(b.begin(), b.end(), b.begin(), ::tolower);
+
+            return a.compare(b) < 0;
+        });
+    }
+
+
     return true;
 }
 
-void init_xmb_special_icons(const char *XMB_ICON_PATH)
-{
-    if (!if_exists(XMB_ICON_PATH))
-    {
-        log_info("[XMB OP] Creating %s for XMB", XMB_ICON_PATH);
-        mkdir(XMB_ICON_PATH, 0777);
-    }
-    else
-        log_info("[XMB OP] %s already exists", XMB_ICON_PATH);
-}
+
 
 #define MEM_DEBUG 0
+// function for virtual itemzflow apps
+bool is_if_vapp(std::string tid){
+    
+    if(tid == "ITEM00001"){
+       log_info("ItemzCore selected????");
+       return true;
+    }
 
-bool is_XMB_spec_icon(const char *tid)
+    return false;
+}
+
+bool is_vapp(std::string tid)
 {
 
     // Only fake *kits and real *kits have this file, so we need to check
     // if they have APP_HOME etc...
-    // if (strstr(DEBUG_SETTINGS_TID, tid) != NULL) return true;
     if (if_exists("/system/sys/set_upper.self"))
     {
         for (int i = 0; i < sizeof SPECIAL_XMB_ICON_TID / sizeof SPECIAL_XMB_ICON_TID[0]; i++)
         {
-            if (strstr(SPECIAL_XMB_ICON_TID[i], tid) != NULL)
+            if (tid == SPECIAL_XMB_ICON_TID[i])
                 return true;
         }
     }
+    else
+    {
+        if(!get->setting_strings[FUSE_PC_NFS_IP].empty()){
+           if(tid == APP_HOME_HOST_TID)
+             return true;
+        }
+    }
+    
 
     return false;
+}
+
+
+void init_xmb_special_icons(const char *tid, std::vector<std::string>& cvEntries)
+{
+   if(is_vapp(tid)){
+     cvEntries.push_back(tid);
+     // update HDD count
+     HDD_count = cvEntries.size();
+     log_debug("[XMB OPS] Added special VAPP tid %s", tid);
+   }
 }
 std::vector<uint8_t> readFile(std::string filename)
 {
@@ -259,7 +290,7 @@ extern ItemzSettings set,
 void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std::string dirpath2, Sort_Category category)
 {
     int ext_count = -1;
-    bool is_spec_icon = false;
+
     std::string tmp, no_icon_path;
 
 #if defined(__ORBIS__)
@@ -273,15 +304,15 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
 
     log_info("Starting index_items_from_dir ...");
 
-    for (int i = 0; i < sizeof SPECIAL_XMB_ICON_FOLDERS / sizeof SPECIAL_XMB_ICON_FOLDERS[0]; i++)
-        init_xmb_special_icons(SPECIAL_XMB_ICON_FOLDERS[i]);
-
     std::vector<std::string> cvEntries;
 
     if (!getEntries(dirpath, cvEntries, FS_FOLDER))
         log_info("failed to get dir");
     else
         log_debug("[Dir 1] Found %i Apps in: %s", (HDD_count = cvEntries.size()), dirpath.c_str());
+        
+    for (int i = 0; i < sizeof SPECIAL_XMB_ICON_TID / sizeof SPECIAL_XMB_ICON_TID[0]; i++)
+         init_xmb_special_icons(SPECIAL_XMB_ICON_TID[i], cvEntries);
 
     if (if_exists(dirpath2.c_str()))
     {
@@ -311,7 +342,7 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
     {
         // we use just those token_data
         std::string fname = cvEntries[not_used - 1];
-        if (!is_XMB_spec_icon(fname.c_str()))
+        if (!is_vapp(fname.c_str()))
         {
             if (!filter_entry_on_IDs(fname.c_str()))
             {
@@ -341,8 +372,6 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
 #endif
 #endif
         }
-        else
-            is_spec_icon = true;
 
         if (i >= HDD_count - 1)
             out_vec[i].is_ext_hdd = true;
@@ -410,23 +439,30 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
             continue;
 
         // read sfo
-        if (is_spec_icon)
+        if (is_vapp(fname.c_str()))
         {
-            if (strstr(fname.c_str(), APP_HOME_DATA_TID) != NULL)
+            if(fname == APP_HOME_DATA_TID)
             {
                 out_vec[i].picpath = "/data/APP_HOME.png";
                 out_vec[i].name = "APP_HOME(Data)";
                 out_vec[i].id = APP_HOME_DATA_TID;
             }
-            if (strstr(fname.c_str(), DEBUG_SETTINGS_TID) != NULL)
+            else if(fname == DEBUG_SETTINGS_TID)
             {
                 out_vec[i].picpath = "/data/debug.png";
                 out_vec[i].name = "PS4 Debug Settings";
                 out_vec[i].id = DEBUG_SETTINGS_TID;
             }
+            else if(fname == APP_HOME_HOST_TID)
+            {
+                out_vec[i].picpath = asset_path("app_home_host.png");
+                out_vec[i].name = fmt::format("{} (/HOSTAPP)", getLangSTR(REMOTE_APP_TITLE));
+                out_vec[i].id = APP_HOME_HOST_TID;
+            }
 
             out_vec[i].version = "0.00";
             out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gde"));
+            out_vec[i].is_vapp = true;
 
             log_info("[XMB OP] SFO Name: %s", out_vec[i].name.c_str());
             log_info("[XMB OP] SFO ID: %s", out_vec[i].id.c_str());
@@ -505,7 +541,6 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
             //log_info("PARENTAL_LEVEL: %i", sfo.GetValueFor<int>("PARENTAL_LEVEL")); 
         }
         i++;
-        is_spec_icon = false;
     }
 
     // Skip one cover to only show it
@@ -529,7 +564,9 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
     out_vec[0].token_c = i - 1;
     log_info("valid count: %d", i);
     HDD_count = i;
-    HDD_count -= ext_count;
+    if(ext_count > 1)
+       HDD_count -= ext_count;
+
     log_info("HDD_count: %i, arr sz: %i", HDD_count, out_vec.size());
     if (out_vec[0].token_c >= 1)
         out_vec.resize(i);
@@ -646,14 +683,14 @@ void get_stat_from_file(std::string &out_str, std::string &filepath)
             break;
         case S_IFREG:
             out_str = "Size: ";
-            out_str += calculateSize(fileinfo.st_size);
+            fileinfo.st_size > 0 ?  out_str += calculateSize(fileinfo.st_size) : out_str += "0 KBs";
             out_str += ", ";
             out_str += ctime(&fileinfo.st_mtime);
             out_str.pop_back();
             break;
         case S_IFSOCK:
             out_str = "Size: ";
-            out_str += calculateSize(fileinfo.st_size);
+            fileinfo.st_size > 0 ?  out_str += calculateSize(fileinfo.st_size) : out_str += "0 KBs";
             out_str = "Socket";
             break;
         default:
@@ -683,4 +720,18 @@ int check_stat(const char *filepath)
         }
     }
     return 0;
+}
+
+int get_folder_size(const char *file_path, u64 *size) {
+	struct stat stat_buf;
+
+	if (!file_path || !size)
+		return -1;
+
+	if (stat(file_path, &stat_buf) < 0)
+		return -1;
+
+	*size = stat_buf.st_size;
+
+	return 0;
 }

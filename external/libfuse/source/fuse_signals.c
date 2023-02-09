@@ -19,14 +19,6 @@ static void exit_handler(int sig)
 	(void) sig;
 	if (fuse_instance)
 		fuse_session_exit(fuse_instance);
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
         signal(SIGHUP, SIG_DFL);
         signal(SIGINT, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
@@ -70,14 +62,6 @@ int fuse_set_signal_handlers(struct fuse_session *se)
 
 void fuse_remove_signal_handlers(struct fuse_session *se)
 {
-/* 
-Modified by Y.OGATA,  06/05/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	if (fuse_instance == se)
 		fuse_instance = NULL;
 

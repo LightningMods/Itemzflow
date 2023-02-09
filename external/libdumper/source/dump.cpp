@@ -192,7 +192,7 @@ try {
     std::filesystem::path npbind_file(sce_sys_path);
     npbind_file /= "npbind.dat";
     if (std::filesystem::is_regular_file(npbind_file)) {
-        printf("npbind_file: %s\n", npbind_file.string().c_str());
+        log_info("npbind_file: %s\n", npbind_file.string().c_str());
         std::vector<npbind::NpBindEntry> npbind_entries = npbind::read(npbind_file); // Flawfinder: ignore
         for (auto&& entry : npbind_entries) {
             std::filesystem::path src("/user/trophy/conf");

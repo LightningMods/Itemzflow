@@ -245,6 +245,7 @@ static int send_reply_ok(fuse_req_t req, const void *arg, size_t argsize)
 
 int fuse_reply_err(fuse_req_t req, int err)
 {
+	//libfuse_print("fuse_reply_err: %i", err);
 	return send_reply(req, -err, NULL, 0);
 }
 
@@ -712,6 +713,8 @@ static void do_open(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
 	struct fuse_open_in *arg = (struct fuse_open_in *) inarg;
 	struct fuse_file_info fi;
 
+	///libfuse_print("do_open: nodeid=%lu, flags=%d", nodeid, arg->flags);
+
 	memset(&fi, 0, sizeof(fi));
 	fi.flags = arg->flags;
 
@@ -731,14 +734,6 @@ static void do_read(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
 		memset(&fi, 0, sizeof(fi));
 		fi.fh = arg->fh;
 		fi.fh_old = fi.fh;
-/* 
-Modified by Y.ITO,  07/27/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 		// fi.ra_hint: 8
 		fi.ra_hint = arg->read_flags >> 8;
 		// fi.seq_count: 8
@@ -1471,7 +1466,7 @@ static void fuse_ll_process(void *data, const char *buf, size_t len,
 	int err;
 
 	if (f->debug)
-		fprintf(stderr,
+		libfuse_print(
 			"unique: %llu, opcode: %s (%i), nodeid: %lu, insize: %zu",
 			(unsigned long long) in->unique,
 			opname((enum fuse_opcode) in->opcode), in->opcode,
@@ -1492,7 +1487,7 @@ static void fuse_ll_process(void *data, const char *buf, size_t len,
 	req->ctr = 1;
 	list_init_req(req);
 	fuse_mutex_init(&req->lock);
-
+    
 	err = EIO;
 	if (!f->got_init) {
 		enum fuse_opcode expected;
@@ -1527,6 +1522,7 @@ static void fuse_ll_process(void *data, const char *buf, size_t len,
 	return;
 
  reply_err:
+    libfuse_print("fuse: error processing request");
 	fuse_reply_err(req, err);
 }
 

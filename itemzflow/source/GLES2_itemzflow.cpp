@@ -29,6 +29,7 @@
 #include <cstdlib>
 #if defined(__ORBIS__)
 #include "patcher.h"
+#include "../external/pugixml/pugixml.hpp"
 extern int retry_mp3_count;
 #endif
 
@@ -36,7 +37,7 @@ extern vec2 resolution;
 
 GameStatus app_status = APP_NA_STATUS;
 extern int numb_of_settings;
-
+extern std::atomic_bool is_disc_inserted;
 // redef for yaml-cpp
 int isascii(int c)
 {
@@ -55,7 +56,6 @@ std::unordered_map<std::string, std::atomic<int>> m;
 // with UI help from LM
 // https://gist.github.com/gchudnov/c1ba72d45e394180e22f
 std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
-u32 patch = 0;
 u32 num_title_id = 0;
 u32 patch_current_index = 0;
 std::string key_title = "title";
@@ -76,7 +76,6 @@ std::string blank = " ";
 std::string type;
 u64 addr = 0;
 std::ofstream cfg_data;
-std::string patch_file;
 std::string patch_applied;
 std::string patch_path_base = "/data/GoldHEN";
 bool is_first_eboot;
@@ -87,47 +86,6 @@ bool no_launch;
 s32 itemflow_pid;
 char patcher_notify_icon[] = "cxml://psnotification/tex_icon_system";
 struct _trainer_struct trs;
-
-const u32 max_tokens = 4096;
-
-typedef struct {
-    json_t mem[max_tokens];
-    unsigned int nextFree;
-    jsonPool_t pool;
-} jsonStaticPool_t;
-
-const char *type_byte = "byte";
-const char *type_bytes16 = "bytes16";
-const char *type_bytes32 = "bytes32";
-const char *type_bytes64 = "bytes64";
-const char *type_bytes = "bytes";
-const char *type_float32 = "float32";
-const char *type_float64 = "float64";
-const char *type_utf8 = "utf8";
-const char *type_utf16 = "utf16";
-
-const char *key_app_type = "type";
-const char *key_app_addr = "addr";
-const char *key_app_value = "value";
-const char *key_patch_list = "patch_list";
-
-json_t const *json_key_title;
-json_t const *json_key_app_ver;
-json_t const *json_key_patch_ver;
-json_t const *json_key_name;
-json_t const *json_key_author;
-json_t const *json_key_note;
-json_t const *json_key_app_titleid;
-json_t const *json_key_app_elf;
-
-const char *title_val;
-const char *app_ver_val;
-const char *patch_ver_val;
-const char *name_val;
-const char *author_val;
-const char *note_val;
-const char *app_titleid_val;
-const char *app_elf_val;
 #endif
 // ------------------------------------------------------- global variables ---
 // the Settings
@@ -151,7 +109,9 @@ vertex_buffer_t *cover_o, // object, with depth: 6 faces
     *cover_i,             // just icon coverbox, overlayed
         *title_vbo = NULL,
         *rdisc_i,
-    *trainer_btns = NULL, *launch_text = NULL, *as_text = NULL, *remove_music = NULL;
+    *trainer_btns = NULL, *launch_text = NULL,
+     *as_text = NULL, *remove_music = NULL,
+     *app_home_refresh = NULL;;
 double rdisc_rz = 0.;
 std::atomic_int inserted_disc = 0;
 
@@ -268,6 +228,72 @@ int wait_time = 0;
 bool confirm_close = false;
 
 /************************ END OF GLOBALS ******************/
+
+
+void refresh_apps_for_cf(Sort_Multi_Sel op, Sort_Category cat )
+{
+    pthread_mutex_lock(&disc_lock);
+    int before = all_apps[0].token_c;
+    log_debug("Reloading Installed Apps before: %i", before);
+#ifdef __ORBIS__
+    loadmsg(getLangSTR(RELOAD_LIST));
+#endif
+    // leak not so much
+    // print_Apps_Array(all_apps, before);
+    delete_apps_array(all_apps);
+
+    index_items_from_dir(all_apps, APP_PATH("../"), "/mnt/ext0/user/app", cat);
+    log_info("=== %i", all_apps[0].token_c);
+    //std::vector<item_idx_t*> sort;
+    //print_Apps_Array(all_apps);
+
+    switch (op)
+    {
+    case TID_ALPHA_SORT:
+    {
+        std::sort(all_apps.begin() + 1, all_apps.end(), [](item_t a, item_t b)
+        { 
+            return a.id.size() < b.id.size(); 
+        });
+        break;
+    }
+    case TITLE_ALPHA_SORT:
+    {
+        std::sort(all_apps.begin() + 1, all_apps.end(), [](item_t a, item_t b)
+        { 
+            std::string tmp1 = a.name;
+            std::string tmp2 = b.name;
+
+            std::transform(tmp1.begin(), tmp1.end(), tmp1.begin(), ::tolower);
+            std::transform(tmp2.begin(), tmp2.end(), tmp2.begin(), ::tolower);
+
+            return tmp1.compare(tmp2) < 0;
+       });
+        break;
+    }
+    case NA_SORT:
+    default:
+        break;
+    }
+
+    realloc_app_retries();
+    InitScene_4(1920, 1080);
+    for (int i = 1; i < all_apps[0].token_c + 1; i++)
+    {
+        check_tex_for_reload(i);
+        check_n_load_textures(i);
+    }
+
+    sceMsgDialogTerminate();
+    log_debug("Done reloading # of App: %i, # of Apps added/removed: %i", all_apps[0].token_c, all_apps[0].token_c - before);
+    is_disc_inserted = false;
+    inserted_disc = -999;
+    g_idx = 1;
+    pthread_mutex_unlock(&disc_lock);
+}
+
+
+
 
 void render_button(GLuint btn, float h, float w, float x, float y, float multi)
 {
@@ -683,6 +709,101 @@ void check_n_load_textures(int idx)
         pthread_mutex_unlock(&disc_lock);
 }
 
+bool is_remote_va_launched = false;
+std::string vapp_title_launched;
+
+void vapp_launch_event(bool is_launch = true){
+    if(is_vapp(title_id)){
+       if(is_launch){
+         is_remote_va_launched = true;
+         vapp_title_launched = title_id;
+       }
+       else{
+         is_remote_va_launched = false;
+         vapp_title_launched.clear();
+       }
+    }
+}
+void itemzCore_Launch_util(layout_t * l) {
+  if (app_status == RESUMABLE) {
+    if (l -> item_d[l -> curr_item].multi_sel.is_active) {
+      if (skipped_first_X) {
+        int multi_opt = l -> item_d[l -> curr_item].multi_sel.pos.y + 1; // +1 skip first option
+        log_info("ll option: %i ...", multi_opt);
+        if (multi_opt == RESUMABLE) {
+          #if defined(__ORBIS__)
+          if (get_patch_path(title_id)) {
+            is_first_eboot = true;
+            trainer_launcher();
+          }
+
+          if(Launch_App(title_id, (bool)(app_status == RESUMABLE), g_idx) == ITEMZCORE_SUCCESS)
+          {
+            vapp_launch_event();
+          }
+          else
+            log_info("Failed to launch %s", title_id.c_str());
+          #else
+          log_info("[PC DEV] *********** RESUMED");
+          #endif
+        } else if (multi_opt == OTHER_APP_OPEN) {
+          #if defined(__ORBIS__)
+          Kill_BigApp(app_status);
+          vapp_launch_event(false);
+          #else
+          log_info("[PC DEV] *********** killed");
+          #endif
+        }
+
+        skipped_first_X = false;
+        (l -> item_d[l -> curr_item].multi_sel.pos.x == OTHER_APP_OPEN) ? l -> item_d[l -> curr_item].multi_sel.pos.x = RESUMABLE: l -> item_d[l -> curr_item].multi_sel.pos.x = OTHER_APP_OPEN;
+      } else {
+        skipped_first_X = true;
+        l -> item_d[l -> curr_item].multi_sel.pos.x = RESUMABLE;
+        // refresh view
+        GLES2_render_list((view_t) v_curr);
+      }
+    }
+  } else {
+    // app_status = (app_status == NO_APP_OPENED) ? RESUMABLE : NO_APP_OPENED;
+    if (app_status == NO_APP_OPENED) {
+      #if defined(__ORBIS__)
+
+      // vapp func
+      if (!is_vapp(title_id) &&
+        !is_dumpable && Confirmation_Msg(getLangSTR(CLOSE_GAME)) == NO) return;
+
+      // ItemCore virtual apps arnt actual ps4 apps 
+      if (is_if_vapp(title_id)) {
+        log_debug("ItemzCore Virtual App tried to  be launched");
+        // smth in the future
+        return;
+      }
+
+      ret = Launch_App(title_id, (bool)(app_status == RESUMABLE), g_idx);
+      if (!(ret & 0x80000000)){
+        vapp_launch_event();
+        app_status = RESUMABLE;
+      }
+      else
+        log_error("Launch failed with Error: 0x%X", ret);
+      #else
+      log_info("[PC DEV] ************ LAUNCHED");
+      app_status = RESUMABLE;
+      #endif
+    } else if (app_status == OTHER_APP_OPEN) {
+      #if defined(__ORBIS__)
+      Kill_BigApp(app_status);
+      vapp_launch_event(false);
+      #else
+      log_info("[PC DEV] ************ KILLED");
+      app_status = NO_APP_OPENED;
+      #endif
+    }
+  }
+
+}
+
 #if defined(__ORBIS__)
 
 static int download_texture(int idx)
@@ -922,7 +1043,20 @@ int FS_GP_Callback(std::string filename, std::string fullpath)
     case Game_Save_opt:
     {
 #if defined(__ORBIS__)
-        SaveData_Operations(RESTORE_GAME_SAVE, title_id, fullpath);
+        std::vector<std::string> save_list;
+        if(is_save_folder(fullpath))
+           SaveData_Operations(RESTORE_GAME_SAVE, title_id, fullpath);
+        else {
+            if(is_nested_saves_recursive(fullpath, save_list)){
+                for(auto &save_path : save_list){
+                    log_info("[*] Running bulk save cmd: curr save_path: %s", save_path.c_str());
+                    SaveData_Operations(RESTORE_GAME_SAVE, title_id, save_path);
+                }
+            }
+            else
+                ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
+        }
+        save_list.clear();
 #endif
         break;
     }
@@ -1141,17 +1275,10 @@ static void X_action_settings(int action, layout_t *l)
     {
 #if defined(__ORBIS__)
         loadmsg(getLangSTR(CHECH_UPDATE_IN_PROGRESS));
-#if UPDATE_TESTING==1 
-        if (1)
-#else  
-        if((ret = check_update_from_url(ITEMZFLOW_TID)) == IF_UPDATE_FOUND)
-#endif
+
+        if(get->setting_bools[INTERNAL_UPDATE] || (ret = check_update_from_url(ITEMZFLOW_TID)) == IF_UPDATE_FOUND)
         {
-#if UPDATE_TESTING==1 
-            if (1)
-#else
-            if(Confirmation_Msg(getLangSTR(OPT_UPDATE)) == YES)
-#endif
+            if(get->setting_bools[INTERNAL_UPDATE] || Confirmation_Msg(getLangSTR(OPT_UPDATE)) == YES)
             {
 
                 loadmsg(getLangSTR(CHECH_UPDATE_IN_PROGRESS));
@@ -1170,7 +1297,7 @@ static void X_action_settings(int action, layout_t *l)
 	            copy_dir("/user/app/ITEM00001/covers", "/user/update_tmp/covers");
 	            copy_dir("/user/app/ITEM00001/custom_app_names", "/user/update_tmp/custom_app_names");
 
-                if(do_update(UPDATE_URL))
+                if(do_update(get->setting_bools[INTERNAL_UPDATE] ? "http://192.168.123.176" : "https://api.pkg-zone.com"))
                 {
                     ani_notify(NOTIFI_SUCCESS, getLangSTR(IF_UPDATE_SUCESS), getLangSTR(RELAUCHING_IN_5));
                 }
@@ -1226,9 +1353,37 @@ static void X_action_settings(int action, layout_t *l)
         get->setting_bools[cover_message] = get->setting_bools[cover_message] ? false : true;
         break;
     }
-    case REFLECTION_OPTION:
+    case FUSE_IP_OPTION:
     {
-        use_reflection = (use_reflection) ? false : true;
+       // use_reflection = (use_reflection) ? false : true;
+        char out[1024];
+#ifdef __ORBIS__
+        // FOR NOW NO KEYPAD BECAUSE THERES NO LETTERS FOR OPTIONAL NFS SHARES
+        if(Keyboard(getLangSTR(SETTINGS_8).c_str(), get->setting_strings[FUSE_PC_NFS_IP].c_str(), &out[0])){
+            int ret = NO_ERROR;
+            loadmsg(getLangSTR(CONNECTING_TO_FUSE));
+            if((ret = IPCMountFUSE(&out[0], "/hostapp", false)) == NO_ERROR){
+                get->setting_strings[FUSE_PC_NFS_IP] = out;
+                auto it = std::find_if(all_apps.begin(), all_apps.end(), [](const item_t& app) {
+                         return app.id == APP_HOME_HOST_TID;
+                });
+                sceMsgDialogTerminate();
+                if(it == all_apps.end())
+                   refresh_apps_for_cf(get->sort_by, get->sort_cat);
+
+                ani_notify(NOTIFI_SUCCESS, getLangSTR(NFS_CONNTECTED), "/hostapp");
+            }
+            else if(ret == FUSE_FW_NOT_SUPPORTED)
+                msgok(NORMAL, fmt::format("{0:#x} {1:}", (ps4_fw_version() >> 16), getLangSTR(HEN_IS_NOT_SUPPORTED)));
+            else
+                msgok(NORMAL, fmt::format("{0:}\n\nRet: {1:d}", getLangSTR(NFS_CONNECT_FAILED),ret));
+        }
+        else
+          ani_notify(NOTIFI_WARNING, getLangSTR(OP_CANNED), getLangSTR(OP_CANNED_1));
+#endif
+        if (title_vbo)
+            vertex_buffer_delete(title_vbo), title_vbo = NULL;
+
         break;
     }
     case CHANGE_BACKGROUND_OPTION:
@@ -1386,6 +1541,41 @@ void Start_Dump(std::string name, std::string path, Dump_Multi_Sels opt)
 }
 
 static void
+hostapp_vapp_X_dispatch(int action, layout_t *l)
+{
+
+    fmt::print("execute {} -> '{}' for '{}'", l->curr_item, l->item_d[l->curr_item].name, all_apps[g_idx].name);
+    l->vbo_s = ASK_REFRESH;
+    GAME_PANEL_V_CURR = l->curr_item;
+    switch (l->curr_item)
+    {
+       case LAUNCH_HA:
+       itemzCore_Launch_util(l);
+       break;
+       case REFRESH_HA:
+       log_info("Refreshing Host App");
+#ifdef __ORBIS__
+            char ipc_msg[128];
+            int retry_limit = 0;
+            while(IPCSendCommand(RESTART_FUSE_FS, (uint8_t*)&ipc_msg[0]) != NO_ERROR && retry_limit < 3){
+                loadmsg("...");
+                log_info("Awaiting Fuse restart");
+                sleep(1);
+                retry_limit++;
+            }                        
+            sceMsgDialogTerminate();
+            if(retry_limit >= 3){
+                log_error("Fuse restart failed");
+                msgok(NORMAL, fmt::format("{0:}\n\nRet: {1:d}", getLangSTR(NFS_CONNECT_FAILED),ret));
+            }
+            else
+               ani_notify(NOTIFI_SUCCESS, getLangSTR(NFS_CONNTECTED), "/hostapp");
+#endif
+       break;
+    }
+}
+
+static void
 X_action_dispatch(int action, layout_t *l)
 {
     int ret; 
@@ -1482,9 +1672,13 @@ X_action_dispatch(int action, layout_t *l)
                     else
                     {
                         loadmsg("Validating Move...");
-                        if (MD5_file_compare(src.c_str(), dst.c_str()) && unlink(src.c_str()) == 0 && symlink(src.c_str(), dst.c_str()) == 0)
+                        if (MD5_file_compare(src.c_str(), dst.c_str()))
                         {
                             //Backup license files
+                            unlink(src.c_str());
+                            if (symlink(dst.c_str(), src.c_str()) < 0)
+                                log_debug("[MOVE] symlinked %s >> %s, Errno(%s)", src.c_str(), dst.c_str(), strerror(errno));
+
                             dst = fmt::format("{}/itemzflow/licenses", usb);
                             copy_dir((char*)"/user/license", (char*)dst.c_str());
 
@@ -1503,9 +1697,6 @@ X_action_dispatch(int action, layout_t *l)
                         }
                         else
                         {
-                            if (symlink(dst.c_str(), src.c_str()) < 0)
-                                log_debug("[MOVE] symlinked %s >> %s, Errno(%s)", src.c_str(), dst.c_str(), strerror(errno));
-
                             ani_notify(NOTIFI_WARNING, getLangSTR(MOVE_FAILED), getLangSTR(OP_CANNED_1));
                         }
                     }
@@ -1524,7 +1715,7 @@ X_action_dispatch(int action, layout_t *l)
                     }
 
                     src = fmt::format("{}/itemzflow/apps/{}/app.pkg", usb, title_id);
-                    size_t len = CalcAppsize((char*)"/user/app");
+                    int len = (int)CalcFreeGigs(src.c_str());
                     bool app_moved = if_exists(src.c_str());
                     src = fmt::format("{}/itemzflow/apps/{}/app_dlc.pkg", usb, title_id);
                     bool dlc_moved = if_exists(src.c_str());
@@ -1679,76 +1870,7 @@ X_action_dispatch(int action, layout_t *l)
     }
     case Launch_Game_opt:
     {
-        if (app_status == RESUMABLE)
-        {
-            if (l->item_d[l->curr_item].multi_sel.is_active)
-            {
-                if (skipped_first_X)
-                {
-                    int multi_opt = l->item_d[l->curr_item].multi_sel.pos.y+1; // +1 skip first option
-                    log_info("ll option: %i ...", multi_opt);
-                    if (multi_opt == RESUMABLE)
-                    {
-#if defined(__ORBIS__)
-                        if (get_patch_path(title_id)){
-                            is_first_eboot = true;
-                            trainer_launcher();
-                        }
-
-                        
-                        Launch_App(title_id, (bool)(app_status == RESUMABLE), g_idx);
-#else
-                        log_info("[PC DEV] *********** RESUMED");
-#endif
-                    }
-                    else if (multi_opt == OTHER_APP_OPEN)
-                    {
-#if defined(__ORBIS__)
-                         Kill_BigApp(app_status);
-#else
-                         log_info("[PC DEV] *********** killed");
-#endif
-                    }
-
-                    skipped_first_X = false;
-                    (l->item_d[l->curr_item].multi_sel.pos.x == OTHER_APP_OPEN) ? l->item_d[l->curr_item].multi_sel.pos.x = RESUMABLE : l->item_d[l->curr_item].multi_sel.pos.x = OTHER_APP_OPEN;
-                }
-                else{
-                    skipped_first_X = true;
-                    l->item_d[l->curr_item].multi_sel.pos.x = RESUMABLE;
-                    // refresh view
-                    GLES2_render_list((view_t)v_curr);
-                }
-            }
-        }
-        else
-        {
-           // app_status = (app_status == NO_APP_OPENED) ? RESUMABLE : NO_APP_OPENED;
-            if (app_status == NO_APP_OPENED){
-#if defined(__ORBIS__)
-                        
-                        
-                if(!is_dumpable && Confirmation_Msg(getLangSTR(CLOSE_GAME)) == NO) break;
-                ret = Launch_App(title_id, (bool)(app_status == RESUMABLE), g_idx);
-                if (!(ret & 0x80000000))
-                    app_status = RESUMABLE;
-                else
-                    log_error("Launch failed with Error: 0x%X", ret);
-#else
-                log_info("[PC DEV] ************ LAUNCHED");
-                app_status = RESUMABLE;
-#endif
-            }
-            else if (app_status == OTHER_APP_OPEN)
-            {
-#if defined(__ORBIS__)
-                Kill_BigApp(app_status);
-#else
-                log_info("[PC DEV] ************ KILLED");
-                app_status = NO_APP_OPENED;
-#endif
-            }
-        }
+        itemzCore_Launch_util(l);
         break;
     }
     case Trainers_opt:
@@ -1757,15 +1879,15 @@ X_action_dispatch(int action, layout_t *l)
         if (get_patch_path(title_id)){
         patch_current_index = l->item_d[l->curr_item].multi_sel.pos.y;
         if (skipped_first_X) {
-            patch_file = fmt::format("/data/GoldHEN/patches/json/{}.json", title_id);
+            std::string patch_file = fmt::format("{}/patches/xml/{}.xml", patch_path_base, title_id);
             std::string patch_title = trs.patcher_title.at(patch_current_index);
             std::string patch_name = trs.patcher_name.at(patch_current_index);
             std::string patch_app_ver = trs.patcher_app_ver.at(patch_current_index);
             std::string patch_app_elf = trs.patcher_app_elf.at(patch_current_index);
             u64 hash_ret = patch_hash_calc(patch_title, patch_name, patch_app_ver, patch_file, patch_app_elf);
             std::string hash_id = fmt::format("{:#016x}", hash_ret);
-            std::string hash_file = fmt::format("/user/data/GoldHEN/patches/settings/{0}.txt",  hash_id);
-            write_enable(hash_id, hash_file, patch_name);
+            std::string hash_file = fmt::format("{}/patches/settings/{}.txt", patch_path_base, hash_id);
+            write_enable(hash_file, patch_name);
             // clear items when user does an action
             trs.patcher_title.clear();
             trs.patcher_app_ver.clear();
@@ -1781,88 +1903,40 @@ X_action_dispatch(int action, layout_t *l)
             skipped_first_X = false;
             break;
         }
-        patch = 0;
-        char* buffer;
-        u64 size;
-        int res = Read_File(patch_file.c_str(), &buffer, &size, 32);
-        if (res) {
-            notifywithicon(patcher_notify_icon, "file %s not found\n error: 0x%08x", patch_file.c_str(), res);
-            break;
+        std::string patch_file = fmt::format("{}/patches/xml/{}.xml", patch_path_base, title_id);
+        pugi::xml_document doc;
+        if (!doc.load_file(patch_file.c_str()))
+        {
+            msgok(NORMAL, fmt::format("File {} open failed", patch_file));
         }
-        json_t mem[max_tokens];
-        json_t const *json = json_create(buffer, mem, sizeof mem / sizeof *mem);
-        if (!json) {
-            notifywithicon(patcher_notify_icon, "Too many tokens or bad file\n");
-            break;
+        pugi::xml_node patches = doc.child("Patch");
+        u32 patch_count = 0;
+        for (pugi::xml_node patch = patches.child("Metadata"); patch; patch = patch.next_sibling("Metadata"))
+        {
+            std::string gameTitle = patch.attribute("Title").value();
+            std::string gameName = patch.attribute("Name").value();
+            std::string gameNote = patch.attribute("Note").value();
+            std::string gameAuthor = patch.attribute("Author").value();
+            std::string gamePatchVer = patch.attribute("PatchVer").value();
+            std::string gameAppver = patch.attribute("AppVer").value();
+            std::string gameAppElf = patch.attribute("AppElf").value();
+            if (app_version.compare(gameAppver) != 0) continue;
+            // don't assign if patch version and app version don't match
+            get_metadata1(&trs, gameAppver, gameAppElf, gameTitle, gamePatchVer, gameName, gameAuthor, gameNote);
+            patch_count++;
+            std::string patch_control_title = fmt::format("{1} {0}", patch_count, getLangSTR(PATCH_NUM));
+            trs.controls_text.push_back(patch_control_title);
         }
-
-        json_t const *patchItems = json_getProperty(json, "patch");
-        if (!patchItems || JSON_ARRAY != json_getType(patchItems)) {
-            notifywithicon(patcher_notify_icon, "Patch not found\n");
-            break;
+        skipped_first_X = true;
+        if (l->item_d[l->curr_item].multi_sel.pos.x == trs.controls_text.size()) {
+            l->item_d[l->curr_item].multi_sel.pos.x = 0;
         }
-        json_t const *patches;
-        for (patches = json_getChild(patchItems); patches != 0;
-            patches = json_getSibling(patches)) {
-            if (JSON_OBJ == json_getType(patches)) {
-                const char *gameTitle = json_getPropertyValue(patches, key_title.c_str());
-                if (!gameTitle)
-                {
-                    log_debug("%s: not found", key_title.c_str());
-                    gameTitle = "";
-                }
-                const char *gameAppver = json_getPropertyValue(patches, key_app_ver.c_str());
-                if (!gameAppver)
-                {
-                    log_debug("%s: not found", key_app_ver.c_str());
-                    gameAppver = "";
-                }
-                const char *gameAppElf = json_getPropertyValue(patches, key_app_elf.c_str());
-                if (!gameAppElf)
-                {
-                    log_debug("%s: not found", key_app_elf.c_str());
-                    gameAppElf = "";
-                }
-                const char *gameName = json_getPropertyValue(patches, key_name.c_str());
-                if (!gameName)
-                {
-                    log_debug("%s: not found", key_name.c_str());
-                    gameName = "";
-                }
-                const char *gamePatchVer = json_getPropertyValue(patches, key_patch_ver.c_str());
-                if (!gamePatchVer)
-                {
-                    log_debug("%s: not found", key_patch_ver.c_str());
-                    gamePatchVer = "";
-                }
-                const char *gameAuthor = json_getPropertyValue(patches, key_author.c_str());
-                if (!gameAuthor)
-                {
-                    log_debug("%s: not found", key_author.c_str());
-                    gameAuthor = "";
-                }
-                const char *gameNote = json_getPropertyValue(patches, key_note.c_str());
-                if (!gameNote)
-                {
-                    log_debug("%s: not found", key_note.c_str());
-                    gameNote = "";
-                }
-                get_metadata1(&trs, gameAppver, gameAppElf, gameTitle, gamePatchVer, gameName, gameAuthor, gameNote);
-                patch++;
-                std::string patch_control_title = fmt::format("{1} {0}", patch, getLangSTR(PATCH_NUM));
-                trs.controls_text.push_back(patch_control_title);
-                skipped_first_X = true;
-                }
-            }
-                if (l->item_d[l->curr_item].multi_sel.pos.x == trs.controls_text.size()) {
-                    l->item_d[l->curr_item].multi_sel.pos.x = 0;
-                }
-                else if (l->item_d[l->curr_item].multi_sel.pos.x == 0) {
-                    l->item_d[l->curr_item].multi_sel.pos.x++;
-                }
-                else {
-                    l->item_d[l->curr_item].multi_sel.pos.x--;
-                }
+        else if (l->item_d[l->curr_item].multi_sel.pos.x == 0) {
+            l->item_d[l->curr_item].multi_sel.pos.x++;
+        }
+        else {
+            l->item_d[l->curr_item].multi_sel.pos.x--;
+        }
         break;
         } else {
             std::string patchq = fmt::format("{}\n{}", getLangSTR(NO_PATCHES), getLangSTR(PATCH_DL_QUESTION));
@@ -2033,6 +2107,7 @@ static void item_page_O_action(layout_t *l)
     l->is_active = l->is_shown = false;
     ls_p.curr_item = 0;
     setting_p.curr_item = 0;
+    gm_p.is_active = false;
     gm_p.vbo_s = ASK_REFRESH;
     v2 = set_view(ITEMzFLOW);
 
@@ -2134,9 +2209,19 @@ void fw_action_to_cf(int button)
             started_epoch =  mins_played = MIN_STATUS_RESET;
             current_app_is_fpkg = all_apps[g_idx].is_fpkg;
             AppVis = all_apps[g_idx].app_vis;
+            // game save clear
             gm_save.is_loaded = false;
-            std::string app_stat = fmt::format("|{}|: is_fpkg: {} AppVis: {}", title, current_app_is_fpkg, AppVis.load());
-            log_debug("%s", app_stat.c_str());
+            if(is_vapp(title_id)){ // REFRESH_HOSTAPP=Refresh Hostapp
+                if(title_id == APP_HOME_HOST_TID)
+                   gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(REFRESH_HOSTAPP)); 
+            } 
+            else
+                gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(DUMP_1));
+
+
+            // reset game panel to not active so it gets refreshed
+            ls_p.is_active = false;
+            fmt::print("|{}|: is_fpkg: {} AppVis: {} {}", title, current_app_is_fpkg, AppVis.load(), g_idx);
             // Every X press on a Game case, we will check if the game selected is opened or not
             // If the App Status changed while in this view the Signal Handler will update the app status and view
             // then the render function will redraw text if the app status changed
@@ -2144,7 +2229,8 @@ void fw_action_to_cf(int button)
             // After we check if the game id is == to the currently opened bigapps id
 #if defined(__ORBIS__)
             int id = sceLncUtilGetAppId(title_id.c_str());
-            if ((id & ~0xFFFFFF) == 0x60000000 && id == sceSystemServiceGetAppIdOfBigApp())
+            if ((title_id == vapp_title_launched && is_remote_va_launched) ||
+             ((id & ~0xFFFFFF) == 0x60000000 && id == sceSystemServiceGetAppIdOfBigApp()))
             {
                 fmt::print("found app to resume: {0:}, AppId: {1:#x}", title_id, id);
                 app_status = RESUMABLE; // set the app status to resumable
@@ -2235,7 +2321,14 @@ void fw_action_to_cf(int button)
             break;
 
         case CRO:
-            X_action_dispatch(0, active_p);
+           if(is_vapp(title_id)){
+              if(title_id == APP_HOME_HOST_TID){
+                 hostapp_vapp_X_dispatch(0, active_p);
+               }
+            }
+            else // reg ps4 app
+               X_action_dispatch(0, active_p);
+
             break; // in_out
 
         case SQU:
@@ -2250,6 +2343,11 @@ void fw_action_to_cf(int button)
             //eject disc
             if(inserted_disc.load() > 0){
 #if __ORBIS__
+                if(Confirmation_Msg(getLangSTR(EJECT_DISK)) == NO){
+                   ani_notify(NOTIFI_WARNING, getLangSTR(OP_CANNED), "");
+                   break;
+                }
+
                 if((ret = sceShellCoreUtilRequestEjectDevice("/dev/cd0")) < 0)
                   ani_notify(NOTIFI_ERROR, getLangSTR(EJECT_DISK_ERROR), fmt::format("{0:#x}", ret));
                 else
@@ -2311,14 +2409,17 @@ void fw_action_to_cf(int button)
            }
 
            /* DELETE SETTINGS VIEW */
-           if(setting_p.vbo)
-              vertex_buffer_delete(setting_p.vbo), setting_p.vbo = NULL;
+           if(active_p->vbo)
+              vertex_buffer_delete(active_p->vbo), active_p->vbo = NULL;
 
-           if (setting_p.f_rect)
-               free(setting_p.f_rect), setting_p.f_rect = NULL;
+           if (active_p->f_rect)
+               free(active_p->f_rect), active_p->f_rect = NULL;
 
-           setting_p.is_active = false;
-           setting_p.item_d.clear();
+           if(title_vbo)
+               vertex_buffer_delete(title_vbo), title_vbo = NULL;
+
+           active_p->is_active = false;
+           active_p->item_d.clear();
            break;
         }
 
@@ -2326,6 +2427,11 @@ void fw_action_to_cf(int button)
             //eject disc
             if(inserted_disc.load() > 0){
 #if __ORBIS__
+                if(Confirmation_Msg(getLangSTR(EJECT_DISK)) == NO){
+                   ani_notify(NOTIFI_WARNING, getLangSTR(OP_CANNED), "");
+                   break;
+                }
+
                 if((ret = sceShellCoreUtilRequestEjectDevice("/dev/cd0")) < 0)
                   ani_notify(NOTIFI_ERROR, getLangSTR(EJECT_DISK_ERROR), fmt::format("{0:#x}", ret));
                 else
@@ -2354,7 +2460,7 @@ back_05905:
 #endif
                 if(setting_p.vbo) vertex_buffer_delete(setting_p.vbo), setting_p.vbo = NULL;
             }
-            else {
+            else if(numb_of_settings > NUMBER_OF_SETTINGS) {
                 log_debug("Killing daemon ...");
                 #ifdef __ORBIS__
                 if(is_connected_app){
@@ -2438,7 +2544,7 @@ void draw_additions(view_t vt)
                     render_button(btn_l2, 45., 50., 1390., 160., 1.1);
             }
         }
-        else if (vt == ITEM_PAGE || vt == ITEM_SETTINGS)
+   else if (vt == ITEM_PAGE || vt == ITEM_SETTINGS)
         {
 
             if (btn_X && btn_up && btn_down && btn_left
@@ -2597,7 +2703,8 @@ void DrawScene_4(void)
     /* animation timing */
     double ani_ratio = 0.;
 
-    if(mins_played > 0 || mins_played == MIN_STATUS_NA){
+    if(mins_played > 0 || mins_played == MIN_STATUS_NA 
+    || mins_played == MIN_STATUS_VAPP){
         if(title_vbo)
            vertex_buffer_delete(title_vbo), title_vbo = NULL;
     }
@@ -2796,7 +2903,7 @@ void DrawScene_4(void)
         {
 
 #if defined(__ORBIS__)
-            if (get->setting_bools[cover_message])
+            if (0)//get->setting_bools[cover_message])
             {
                 if (Confirmation_Msg(getLangSTR(DOWNLOAD_COVERS)) == YES)
                 {
@@ -2919,10 +3026,10 @@ void DrawScene_4(void)
             //
             item_t *li = &all_apps[tex_idx];
            // log_info("tex_idx: %i", tex_idx);
-                //
-                title_vbo = vertex_buffer_new("vertex:3f,tex_coord:2f,color:4f");
+            //
+            title_vbo = vertex_buffer_new("vertex:3f,tex_coord:2f,color:4f");
             // NAME, is size checked
-            tmpstr = fmt::format("{0:.20}{1:} {2:}", li->name, (li->name.length() > 20) ? "..." : "", li->is_ext_hdd ? "(Ext. HDD)" : "");
+            tmpstr = fmt::format("{0:.25}{1:} {2:}", li->name, (li->name.length() > 25) ? "..." : "", li->is_ext_hdd ? "(Ext. HDD)" : "");
             if (v_curr == ITEM_SETTINGS)
                 tmpstr = getLangSTR(ITEMZ_SETTINGS);
 
@@ -2983,7 +3090,11 @@ void DrawScene_4(void)
                 }
 
                 pen_game_options.x += 10.;
-                tmpstr = fmt::format("{0:} {2:} ({1:})", li->id, li->is_fpkg ? "FPKG" : getLangSTR(RETAIL), li->version);
+
+                if(li->is_vapp)
+                  tmpstr = fmt::format("{0:} ({1:}) (VAPP)", li->id, li->version);
+                else
+                  tmpstr = fmt::format("{0:} {2:} ({1:})", li->id, li->is_fpkg ? "FPKG" : getLangSTR(RETAIL), li->version);
                 // fill the vbo
                 add_text(title_vbo, sub_font, tmpstr, &c, &pen_game_options);
 
@@ -3009,6 +3120,10 @@ void DrawScene_4(void)
                     tmpstr = getLangSTR(NO_STATS_AVAIL);
                     mins_played = MIN_STATUS_SEEN;
                 }
+                else if(mins_played == MIN_STATUS_VAPP){
+                     tmpstr = getLangSTR(VAPP_MENU);
+                     mins_played = MIN_STATUS_SEEN;
+                } 
                 itemzcore_add_text(title_vbo,100., 920., tmpstr);
             }
             else if (v_curr == ITEMzFLOW)
@@ -3037,10 +3152,14 @@ void DrawScene_4(void)
             }
             else if (v_curr == ITEM_SETTINGS)
             { // fill the vbo{
-
+                std::string ud_str;
+                 // THIS DOESNT NOT NEED TRANSLATED BECAUSE ITS NEVER SUPPOSED TO BE USED BY USERS
+                // ONLY THE DEVS OF THIS PROJECT USE THIS
+                get->setting_bools[INTERNAL_UPDATE] ? ud_str = "Internal Update Mode Enabled" : ud_str = getLangSTR(SETTINGS);
+                log_info( "ud_str: %s", (numb_of_settings == NUMBER_OF_SETTINGS) ? ud_str.c_str() : getLangSTR(ADVANCED_SETTINGS).c_str());
                 setting_pen.x += 10.;
-                texture_font_load_glyphs(sub_font, (numb_of_settings == NUMBER_OF_SETTINGS) ? getLangSTR(SETTINGS).c_str() : getLangSTR(ADVANCED_SETTINGS).c_str());
-                add_text(title_vbo, sub_font, (numb_of_settings == NUMBER_OF_SETTINGS) ? getLangSTR(SETTINGS) : getLangSTR(ADVANCED_SETTINGS), &c, &setting_pen);
+                texture_font_load_glyphs(sub_font, (numb_of_settings == NUMBER_OF_SETTINGS) ? ud_str.c_str() : getLangSTR(ADVANCED_SETTINGS).c_str());
+                add_text(title_vbo, sub_font, (numb_of_settings == NUMBER_OF_SETTINGS) ? ud_str : getLangSTR(ADVANCED_SETTINGS), &c, &setting_pen);
                 if (get->setting_bools[Show_Buttons])
                 {
                     // itemzcore_add_text(title_vbo,80., 115., getLangSTR(BUTTON_X_INFO));
@@ -3050,6 +3169,7 @@ void DrawScene_4(void)
                     itemzcore_add_text(title_vbo,370., 42., getLangSTR(BUTTON_UP_DOWN_INFO));
                     itemzcore_add_text(title_vbo,inserted_disc.load() > 0 ? 115 : 40., 110., inserted_disc.load() > 0 ? getLangSTR(EJECT_DISK) : getLangSTR(NO_DISC_INSERTED));
                 }
+
             }
             //
             // we eventually added glyphs... (todo: glyph cache)
@@ -3174,7 +3294,7 @@ all_drawn:
     this is the main renderloop
     note: don't need to be cleared or swapped any frames !
     this one is drawing each rendered frame!
-*/
+*/extern std::atomic_bool is_idle;
 void Render_ItemzCore(void)
 {
     // update the
@@ -3182,15 +3302,15 @@ void Render_ItemzCore(void)
     on_GLES2_Update(u_t);
     GLES2_ani_update(u_t);
 
-    if ((view_t)v_curr != FILE_BROWSER)
-        DrawScene_4();
-    else
-    {
-        draw_additions((view_t)v_curr);
-        GLES2_render_list(FILE_BROWSER);
+    if(!is_idle.load()){
+      if ((view_t)v_curr != FILE_BROWSER)
+           DrawScene_4();
+      else {
+          draw_additions((view_t)v_curr);
+          GLES2_render_list(FILE_BROWSER);
+        }
     }
 
-    // show_dumped_frame();
-    GLES2_Draw_sysinfo();
+    GLES2_Draw_sysinfo(is_idle.load());
     GLES2_ani_draw();
 }

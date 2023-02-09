@@ -402,6 +402,13 @@ int Start_IF_internal_Services(int reboot_num)
 
     log_info("Registered Handler");
 
+    if(sceNetCtlInit() < 0)
+    {
+        log_info("sceNetCtlInit failed");
+        return INIT_FAILED;
+    }
+
+
     //USB LOGGING
     mkdir(fmt::format("/mnt/usb{0:d}/itemzflow", usbpath()).c_str(), 0777);
     std::string usb_log = fmt::format("/mnt/usb{0:d}/itemzflow/itemzflow_app.log", usbpath()).c_str();

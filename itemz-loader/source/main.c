@@ -24,7 +24,7 @@ bool restart_nessary = false;
 void is_restart_needed_for_daemon(void* arg){
 
     
-	logshit("is_restart_needed_for_daemon (%i)\n", atoi(arg));
+	logshit("is_restart_needed_for_daemon (%i)", atoi(arg));
 	uint32_t appid = sceLncUtilGetAppId("ITEM00002");
     //Launch Daemon with silent    
     if ((appid & ~0xFFFFFF) != 0x60000000){
@@ -32,7 +32,7 @@ void is_restart_needed_for_daemon(void* arg){
 		logshit("Restart needed for Daemon!");
 	}
     else
-       logshit("Found Daemon AppId: %x, No restart needed\n", appid);
+       logshit("Found Daemon AppId: %x, No restart needed", appid);
 }
 
 int main(int argc, char* argv[])
@@ -58,18 +58,18 @@ int main(int argc, char* argv[])
     libjb = sceKernelLoadStartModule("/app0/Media/jb.prx", 0, NULL, 0, 0, 0);
     int ret = sceKernelDlsym(libjb, "jbc_run_as_root", (void**)&jbc_run_as_root);
     if (ret >= 0){
-        logshit("jbc_run_as_root resolved from PRX\n");
+        logshit("jbc_run_as_root resolved from PRX");
         if (!jbc_run_as_root){
-             msgok("%s: %x\n", getLangSTR(FATAL_JB),ret); 
+             msgok("%s: %x", getLangSTR(FATAL_JB),ret); 
 			 goto err;
 		}
 		else{
 			jbc_run_as_root(loader_rooted, NULL, CWD_ROOT);
-			logshit("jbc_run_as_root() succesful\n");
+			logshit("jbc_run_as_root() successful");
 		}
     }
 	else{
-        msgok("%s: %x\n", getLangSTR(FATAL_JB),ret); goto err;
+        msgok("%s: %x", getLangSTR(FATAL_JB),ret); goto err;
 	}
 	
 	if(atoi(argv[0]) < 3){
@@ -83,10 +83,10 @@ int main(int argc, char* argv[])
 	}
 
 
-	logshit("[Itemz-loader:%s:%i] ----- Launching() ---\n", __FUNCTION__, __LINE__);
+	logshit("[Itemz-loader:%s:%i] ----- Launching() ---", __FUNCTION__, __LINE__);
 	orbisPadFinish();
 	if (sceSystemServiceLoadExec("/app0/ItemzCore.self", 0) == 0)
-		logshit("[Itemz-loader:%s:%i] ----- Launched (shouldnt see) ---\n", __FUNCTION__, __LINE__);
+		logshit("[Itemz-loader:%s:%i] ----- Launched (shouldnt see) ---", __FUNCTION__, __LINE__);
 
 err:
    msgok("%s\n\n%s\n", getLangSTR(LOADER_ERROR), getLangSTR(MORE_INFO));

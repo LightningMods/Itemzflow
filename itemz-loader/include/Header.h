@@ -206,7 +206,7 @@ uint32_t sceLncUtilLaunchApp(const char* tid, const char* argv[], LncAppParam* p
 bool boot_daemon_services();
 int sceLncUtilGetAppId(const char* tid);
 int sceSystemServiceLoadExec(const char* eboot, const char* argv[]);
-int copyFile(char* sourcefile, char* destfile);
+int copyFile(const char* sourcefile, const char* destfile);
 void loader_rooted(void *arg);
 void init_itemzGL_modules();
 int msgok(char* format, ...);

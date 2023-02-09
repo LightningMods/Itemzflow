@@ -8,7 +8,6 @@
 #include <codecvt>
 #include "game_saves.h"
 #include "sfo.hpp"
-#include "tiny-json.h"
 
 enum kpatch_type {
     byte,
@@ -49,11 +48,8 @@ static std::map<std::string, u8> patch_type = {
     {"utf16",   kpatch_type::utf16},
 };
 
-
-extern std::hash<std::string> hasher;
 // https://gist.github.com/gchudnov/c1ba72d45e394180e22f
 extern std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
-extern u32 patch;
 extern u32 num_title_id;
 extern std::string key_title;
 extern std::string key_app_ver;
@@ -76,7 +72,6 @@ extern std::string blank;
 extern std::string type;
 extern u64 addr;
 extern std::ofstream cfg_data;
-extern std::string patch_file;
 extern std::string patch_applied;
 extern std::string patch_path_base;
 extern std::string patch_settings;
@@ -91,22 +86,19 @@ extern u32 patch_current_index;
 
 extern bool is_using_plugin;
 
-std::vector<u8> HexToBytes(const std::string& hex);
 u64 patch_hash_calc(std::string title, std::string name, std::string app_ver = "00.00", std::string title_id = "CUSAXXXXX", std::string name_elf = "");
-void write_enable(std::string hashid, std::string cfg_file, std::string patch_name);
+void write_enable(std::string cfg_file, std::string patch_name);
 bool get_patch_path(std::string path);
 std::string get_patch_data(std::string path);
-s32 Read_File(const char *File, char **Data, size_t *Size, int extra);
-s32 Write_File(const char *File, unsigned char *Data, size_t Size);
 bool get_metadata0(s32& pid, u64 ex_start);
-bool get_metadata1(struct _trainer_struct *tmp,
-                   const char* patch_app_ver,
-                   const char* patch_app_elf,
-                   const char* patch_title,
-                   const char* patch_ver,
-                   const char* patch_name,
-                   const char* patch_author,
-                   const char* patch_note);
+void get_metadata1(struct _trainer_struct *tmp,
+                   std::string patch_app_ver,
+                   std::string patch_app_elf,
+                   std::string patch_title,
+                   std::string patch_ver,
+                   std::string patch_name,
+                   std::string patch_author,
+                   std::string patch_note);
 void patch_data(s32& pid, u32& items);
 void trainer_launcher();
 void dl_patches();

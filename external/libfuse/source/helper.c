@@ -36,6 +36,8 @@ struct helper_opts {
 	char *mountpoint;
 };
 
+#define DGB_CHANNEL_TTYL 0
+int sceKernelDebugOutText(int DBG_CHANNEL, const char *text);
 
 void libfuse_print(char* format, ...)
 {
@@ -48,9 +50,9 @@ void libfuse_print(char* format, ...)
 	va_end(args);
 
 	snprintf(&buff[0], 1023, "%s\n", &buff[0]);
-	sceKernelDebugOutText(0, &buff[0]);
+	sceKernelDebugOutText(DGB_CHANNEL_TTYL, &buff[0]);
 
-	int fd = sceKernelOpen("/user/app/ITEM00001/libfuse.log", O_WRONLY | O_CREAT | O_APPEND, 0777);
+	int fd = sceKernelOpen("/data/itemzflow_daemon/libfuse.log", O_WRONLY | O_CREAT | O_APPEND, 0777);
 	if (fd >= 0)
 	{
 		sceKernelWrite(fd, &buff[0], strlen(&buff[0]));
@@ -115,11 +117,8 @@ static int fuse_helper_opt_proc(void *data, const char *arg, int key,
 
 	switch (key) {
 	case KEY_HELP:
-		usage(outargs->argv[0]);
-		/* fall through */
 
 	case KEY_HELP_NOHEADER:
-		helper_help();
 		return fuse_opt_add_arg(outargs, "-h");
 
 	case KEY_VERSION:
@@ -129,23 +128,8 @@ static int fuse_helper_opt_proc(void *data, const char *arg, int key,
 	case FUSE_OPT_KEY_NONOPT:
 		if (!hopts->mountpoint) {
 			char mountpoint[PATH_MAX];
-/* 
-Modified by Y.OGATA,  06/05/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-			/*
-			if (realpath(arg, mountpoint) == NULL) {
-				fprintf(stderr,
-					"fuse: bad mount point `%s': %s",
-					arg, strerror(errno));
-				return -1;
-			}
-			*/
-			strncpy(mountpoint, arg, 9); /* /hostapp + 1 */
+			strncpy(mountpoint, arg, PATH_MAX); 
+			libfuse_print("fuse: mountpoint is %s", mountpoint);
 			return fuse_opt_add_opt(&hopts->mountpoint, mountpoint);
 		} else {
 			libfuse_print("fuse: invalid argument `%s'", arg);
@@ -166,21 +150,16 @@ static int add_default_subtype(const char *progname, struct fuse_args *args)
 		basename = progname;
 	else if (basename[1] != '\0')
 		basename++;
-/* 
-Modified by F.KUMAGAE,  05/15/2014
 
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	size_t subtype_opt_size = strlen(basename) + 64;
 	subtype_opt = (char *) malloc(subtype_opt_size);
 	if (subtype_opt == NULL) {
 		libfuse_print("fuse: memory allocation failed");
 		return -1;
 	}
+
 	snprintf(subtype_opt, subtype_opt_size, "-osubtype=%s", basename);
+	libfuse_print(subtype_opt);
 	res = fuse_opt_add_arg(args, subtype_opt);
 	free(subtype_opt);
 	return res;
@@ -233,14 +212,7 @@ int fuse_daemonize(int foreground)
 	return 0;
 }
 
-/* 
-Modified by Y.OGATA,  03/16/2012
 
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 static struct fuse_chan *fuse_mount_common(const char *mountpoint,
 					   struct fuse_args *args, const struct fuse_operations *op)
 {
@@ -265,20 +237,7 @@ static struct fuse_chan *fuse_mount_common(const char *mountpoint,
 
 	return ch;
 }
-/* 
-Modified by Y.OGATA,  03/16/2012
 
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-/*
-struct fuse_chan *fuse_mount(const char *mountpoint, struct fuse_args *args)
-{
-	return fuse_mount_common(mountpoint, args);
-}
-*/
 static void fuse_unmount_common(const char *mountpoint, struct fuse_chan *ch)
 {
 	//ch ? fuse_chan_fd(ch) : -1;
@@ -314,14 +273,6 @@ struct fuse *fuse_setup_common(int argc, char *argv[],
 		return NULL;
 	}
 
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	ch = fuse_mount_common(*mountpoint, &args, op);
 	if (!ch) {
 		fuse_opt_free_args(&args);
@@ -398,16 +349,13 @@ static int fuse_main_common(int argc, char *argv[],
 	if (fuse == NULL)
 		return 1;
 
-	if (multithreaded)
-		res = fuse_loop_mt(fuse);
-	else
-		res = fuse_loop(fuse);
+	res = fuse_loop_mt(fuse);
 
 	fuse_teardown_common(fuse, mountpoint);
 	if (res == -1)
 		return 1;
 
-	return 0;
+	return res;
 }
 
 int fuse_main_real(int argc, char *argv[], const struct fuse_operations *op,
@@ -517,14 +465,7 @@ void fuse_teardown_compat22(struct fuse *fuse, int fd, char *mountpoint)
 	fuse_teardown_common(fuse, mountpoint);
 }
 
-/* 
-Modified by Y.OGATA,  03/16/2012
 
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 int fuse_mount_compat25(const char *mountpoint, struct fuse_args *args, const struct fuse_operations *op)
 {
 	return fuse_kern_mount(mountpoint, args, op);

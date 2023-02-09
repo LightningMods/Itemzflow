@@ -69,14 +69,6 @@ struct fuse_file_info {
 	    seekable.  Introduced in version 2.8 */
 	unsigned int nonseekable : 1;
 
-/* 
-Modified by Y.ITO,  07/27/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	/** Padding.  Do not use*/
 	unsigned int padding : 12;
 

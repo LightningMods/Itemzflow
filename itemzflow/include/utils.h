@@ -67,7 +67,8 @@ enum AppType
 typedef enum{
     MIN_STATUS_NA = -1,
     MIN_STATUS_RESET = -2,
-    MIN_STATUS_SEEN = -3
+    MIN_STATUS_SEEN = -3,
+    MIN_STATUS_VAPP = -4,
 } min_status;
 
 typedef struct
@@ -84,17 +85,22 @@ enum MSG_DIALOG {
 };
 
 extern uint32_t daemon_appid;
-enum IPC_Errors
+enum IPC_Ret
 {
     INVALID = -1,
     NO_ERROR = 0,
     OPERATION_FAILED = 1,
+    FUSE_IP_ALREADY_SET = 3,
+    FUSE_IP_NOT_SET = 4,
+    FUSE_FW_NOT_SUPPORTED = 5,
     DEAMON_UPDATING = 100
 };
 
 
 enum IPC_Commands
 {
+        
+    MACGUFFIN_CMD = 69,
     CMD_SHUTDOWN_DAEMON = 0,
     CONNECTION_TEST = 1,
     ENABLE_HOME_REDIRECT = 2,
@@ -104,11 +110,17 @@ enum IPC_Commands
     CRITICAL_SUSPEND = 6,
     INSTALL_IF_UPDATE = 7,
     RESTART_FTP_SERVICE = 8,
-    DEAMON_UPDATE = 100
+    FUSE_SET_SESSION_IP = 9,
+    FUSE_SET_DEBUG_FLAG = 10,
+    FUSE_START_W_PATH = 11,
+    RESTART_FUSE_FS = 12,
+    DEAMON_UPDATE = 100,
 };
 
 
 
+
+bool IPCOpenIfNotConnected();
 
 typedef struct SceNetEtherAddr {
     uint8_t data[6];
@@ -253,13 +265,16 @@ typedef struct save_entry
     std::string mtime;
     std::string icon_path;
 
-    int numb_of_saves;
-    bool is_loaded;
-    int size;
-    uint32_t userid;
-    uint32_t blocks;
+    int numb_of_saves = 0;
+    bool is_loaded = false ;
+    int ui_requested_save = -1;
+    int ui_current_save = -1;
+    int size = 0;
+    uint32_t userid = 0;
+    uint32_t blocks = 0;
     uint16_t flags;
-    uint16_t type;
+    uint16_t type = 0;
+    uint16_t userParam = 0;
 } save_entry_t;
 
 enum bool_settings
@@ -276,6 +291,7 @@ enum bool_settings
     using_sb, 
     has_image,
     cover_message,
+    INTERNAL_UPDATE,
     NUMB_OF_BOOLS
 
 };
@@ -290,6 +306,10 @@ enum string_settings
     NUM_OF_STRINGS,
     SB_PATH,
     IMAGE_PATH,
+    THEME_NAME,
+    THEME_AUTHOR,
+    THEME_VERSION,
+    FUSE_PC_NFS_IP,
     NUMB_OF_STRINGS
 };
 
@@ -320,11 +340,13 @@ extern save_entry_t gm_save;
 extern bool current_app_is_fpkg;
 bool LoadOptions(ItemzSettings *set);
 bool SaveOptions(ItemzSettings *set);
-bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer);
+bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer, bool keypad = false);
+IPC_Ret IPCMountFUSE(const char* ip, const char* path, bool debug_mode);
 
 
 // sysctl
 uint32_t ps4_fw_version(void);
+bool is_goldhen_loaded();
 bool copy_dir(const char* sourcedir, const char* destdir);
 extern bool is_connected_app;
 size_t CalcAppsize(const char* filename);
@@ -470,13 +492,6 @@ typedef enum
 } GameStatus;
 
 extern GameStatus app_status;
-#define UPDATE_TESTING 0
-
-#if UPDATE_TESTING==1
-#define UPDATE_URL "http://192.168.123.176"
-#else
-#define UPDATE_URL "https://api.pkg-zone.com"
-#endif
 
 bool is_sfo(const char* input_file_name);
 int ItemzLaunchByUri(const char *uri);
@@ -554,7 +569,7 @@ bool IPCOpenConnection();
 int IPCReceiveData(uint8_t* buffer, int32_t size);
 int IPCSendData(uint8_t* buffer, int32_t size);
 int IPCCloseConnection();
-int IPCSendCommand(enum IPC_Commands cmd, uint8_t* IPC_BUFFER);
+IPC_Ret IPCSendCommand(enum IPC_Commands cmd, uint8_t* IPC_BUFFER);
 /*===================++++++=================================*/
 extern bool reboot_app;
 bool IS_ERROR(uint32_t ret);
@@ -663,14 +678,19 @@ enum mp3_status_t{
     MP3_STATUS_PAUSED,
     MP3_STATUS_ERROR
 };
-
+#ifndef __ORBIS__   
+void sceMsgDialogTerminate(void);
+#endif
 extern std::vector<item_t> mp3_playlist;
+double CalcFreeGigs(const char* path);
 bool is_fpkg(std::string pkg_path);
 bool patch_lnc_debug();
+extern bool is_remote_va_launched;
 bool do_update(std::string  url);
 void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path);
 struct sockaddr_in IPCAddress(uint16_t port);
-bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER filter);
+bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER filter, bool for_fs_browser);
+bool is_if_vapp(std::string tid);
 void delete_apps_array(std::vector<item_t> &b);
 void index_items_from_dir_v2(std::string dirpath, std::vector<item_t> &out_vec);
 void refresh_apps_for_cf(Sort_Multi_Sel op, Sort_Category cat = NO_CATEGORY_FILTER);
@@ -698,4 +718,8 @@ void try_func();
 std::string check_from_url(std::string &url_);
 bool init_curl();
 bool Launch_Store_URI();
+bool is_vapp(std::string tid);
 std::string sanitizeString(const std::string& str);
+void GLES2_Draw_idle_info(void);
+bool get_ip_address(std::string &ip);
+int get_folder_size(const char *file_path, u64 *size);

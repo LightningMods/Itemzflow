@@ -81,18 +81,8 @@ struct fuse_session *fuse_lowlevel_new_common(struct fuse_args *args,
 
 void fuse_kern_unmount_compat22(const char *mountpoint);
 void fuse_kern_unmount(const char *mountpoint, int fd);
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 int fuse_kern_mount(const char *mountpoint, struct fuse_args *args, const struct fuse_operations *op);
-
-int fuse_send_reply_iov_nofree(fuse_req_t req, int error, struct iovec *iov,
-			       int count);
+int fuse_send_reply_iov_nofree(fuse_req_t req, int error, struct iovec *iov, int count);
 void fuse_free_req(fuse_req_t req);
 
 

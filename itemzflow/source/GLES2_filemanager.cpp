@@ -57,7 +57,7 @@ void index_items_from_dir_v2(std::string dirpath, std::vector<item_t> &out_vec)
 
     std::vector<std::string> cvEntries;
 
-    if (!getEntries(dirpath, cvEntries, fs_ret.filter))
+    if (!getEntries(dirpath, cvEntries, fs_ret.filter, true))
         log_info("failed to get dir");
     else
         fmt::print("Found {} in: {}", cvEntries.size(), dirpath);

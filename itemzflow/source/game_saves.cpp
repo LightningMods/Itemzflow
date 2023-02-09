@@ -467,6 +467,11 @@ const orbis_patch_t shellcore_lnc_debug_505[] = {
     {0, NULL, 0}
 };
 
+/*const orbis_patch_t shellcore_trophy_505[] = {
+    {0x03ECEBF, (char*)"\x90\x90\x90\x90\x90\x90", 6},
+    {0, NULL, 0}
+};
+*/
 typedef struct OrbisSaveDataFingerprint {
     char data[ORBIS_SAVE_DATA_FINGERPRINT_DATA_SIZE];
     char padding[15];
@@ -798,31 +803,6 @@ bool is_already_mounted = false;
 char mount[32];
 save_entry_t save; //Have UI Funcs grab this
 
-static int save_info(void* user, const char* section, const char* name,
-    const char* value, int unused)
-{
-
-#define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
-
-    if (MATCH("Save", "dir_name")) {
-        save.dir_name = fmt::format("{}", value);
-    }
-    if (MATCH("Save", "main_title")) {
-        save.main_title = fmt::format("{}", value);
-    }
-    if (MATCH("Save", "sub_title")) {
-        save.sub_title = fmt::format("{}", value);
-    }
-    if (MATCH("Save", "detail")) {
-        save.detail = fmt::format("{}", value);
-    }
-    if (MATCH("Save", "blocks")) {
-        save.blocks = atoi(value);
-    }
-
-    return  0;
-}
-
 extern "C"{
 int32_t sceSaveDataMount(OrbisSaveDataMount*, OrbisSaveDataMountResult*);
 int32_t sceSaveDataUmount(OrbisSaveDataMountPoint*);
@@ -906,6 +886,7 @@ int check_syscalls()
 
     return 0;
 }
+
 
 // GoldHEN 2+ custom syscall 197
 // (same as ps4debug syscall 107)
@@ -1092,8 +1073,16 @@ bool patch_lnc_debug()
     return true;
 }
 
+bool is_patched()
+{
+    return shellcore_backup != NULL;
+}
+
 bool patch_save_libraries()
 {
+    if(is_patched()){
+        return true;
+    }
     const orbis_patch_t* shellcore_patch = NULL;
     const orbis_patch_t* savedata_patch = NULL;
     int version = get_firmware_version();
@@ -1132,8 +1121,7 @@ bool patch_save_libraries()
         break;
 
     default:
-        std::string tmp = fmt::format("{0:}: {1:#x}", getLangSTR(UNSUPPORTED_FW), version >> 8);
-        ani_notify(NOTIFI_WARNING, getLangSTR(UNSUPPORTED_FW), tmp);
+        ani_notify(NOTIFI_WARNING, getLangSTR(UNSUPPORTED_FW), fmt::format("{0:}: {1:#x}", getLangSTR(UNSUPPORTED_FW), version >> 8));
         return false;
     }
 
@@ -1231,17 +1219,17 @@ bool orbis_SaveMount(const save_entry_t* save, uint32_t mount_mode, char* mount_
     int32_t mountErrorCode = sceSaveDataMount(&mount, &mountResult);
     if (mountErrorCode < 0)
     {
-       fmt::print("ERROR (%X): can't mount '{}/{}'", mountErrorCode, save->title_id, save->dir_name);
+       log_error("ERROR (0x%X): can't mount '%s/%s'", mountErrorCode, save->title_id.c_str(), save->dir_name.c_str());
        return false;
     }
 
-    fmt::print("'{0:}/{1:}' mountPath ({3:}) ERROR: {4:#x}", save->title_id, save->dir_name, mountResult.mountPathName, mountErrorCode);
+    log_info("'%s/%s' mountPath (%s) ERROR: 0x%X", save->title_id.c_str(), save->dir_name.c_str(), mountResult.mountPathName, mountErrorCode);
     strncpy(mount_path, mountResult.mountPathName, ORBIS_SAVE_DATA_MOUNT_POINT_DATA_MAXSIZE);
 
     return true;
 }
 
-int orbis_UpdateSaveParams(std::string mountPath, std::string  title, std::string  subtitle, std::string  details)
+int orbis_UpdateSaveParams(std::string mountPath, std::string  title, std::string  subtitle, std::string  details, uint32_t userParam)
 {
 	OrbisSaveDataParam saveParams;
 	OrbisSaveDataMountPoint mount;
@@ -1253,8 +1241,6 @@ int orbis_UpdateSaveParams(std::string mountPath, std::string  title, std::strin
     if(title.empty())
        title = "NA";
 
-    log_info("UpdateSaveParams: (%s, %s, %s, %s)", mountPath.c_str(), title.c_str(), subtitle.c_str(), details.c_str());
-
 	memset(&saveParams, 0, sizeof(OrbisSaveDataParam));
 	memset(&mount, 0, sizeof(OrbisSaveDataMountPoint));
 
@@ -1262,7 +1248,10 @@ int orbis_UpdateSaveParams(std::string mountPath, std::string  title, std::strin
 	strncpy(saveParams.title, title.c_str(), ORBIS_SAVE_DATA_TITLE_MAXSIZE);
 	strncpy(saveParams.subtitle, subtitle.c_str(), ORBIS_SAVE_DATA_SUBTITLE_MAXSIZE);
 	strncpy(saveParams.details, details.c_str(), ORBIS_SAVE_DATA_DETAIL_MAXSIZE);
+    saveParams.userParam = userParam;
 	saveParams.mtime = time(NULL);
+
+    log_info("UpdateSaveParams: (%s, %s, %s, %s, %x)", mount.data, saveParams.title, saveParams.subtitle, saveParams.details, userParam);
 
 	int32_t setParamResult = sceSaveDataSetParam(&mount, ORBIS_SAVE_DATA_PARAM_TYPE_ALL, &saveParams, sizeof(OrbisSaveDataParam));
 	if (setParamResult < 0) {
@@ -1279,16 +1268,16 @@ static bool _update_save_details(std::string mount, std::string usb_path, save_e
 
     tmp = fmt::format("{}/sce_sys/param.sfo", usb_path);
     
-    fmt::print("Update Save Details :: Reading {}...", tmp);
+    log_info("Update Save Details :: Reading %s...", tmp.c_str());
 
 	// READ DATA FROM PARAM.SFO
 	if (is_sfo(tmp.c_str()))
 	{   
-		if(!orbis_UpdateSaveParams(mount, save->main_title, save->sub_title, save->detail))
+		if(!orbis_UpdateSaveParams(mount, save->main_title, save->sub_title, save->detail, save->userParam))
             return false;
 	}  
     else{
-        fmt::print("Update Save Details :: {} is not a valid SFO file", tmp);
+        log_error("Update Save Details :: %s is not a valid SFO file", tmp.c_str());
         return false;
     }
 
@@ -1313,12 +1302,78 @@ static bool _update_save_details(std::string mount, std::string usb_path, save_e
 		free(icon_png);
 	}
     else
-       fmt::print("Update Save Details :: {} no PNG file", tmp);
+       log_error("Update Save Details :: %s no PNG file", tmp.c_str());
 	
 
 	return true;
 }
 
+void rm_nonprinting (std::string& str)
+{
+    str.erase (std::remove_if (str.begin(), str.end(),
+                                [](unsigned char c){
+                                    return !std::isprint(c);
+                                }),
+                                str.end());
+}
+
+bool get_save_details(std::vector<uint8_t> &sfo_data, save_entry_t &save)
+{
+    if(sfo_data.empty())
+        return false;
+
+    SfoReader sfo(sfo_data);
+    save.userParam = 0;
+
+    save.main_title = sfo.GetValueFor<std::string>("MAINTITLE");
+    save.detail = sfo.GetValueFor<std::string>("DETAIL");
+    save.dir_name = sfo.GetValueFor<std::string>("SAVEDATA_DIRECTORY");
+    save.sub_title = sfo.GetValueFor<std::string>("SUBTITLE");
+    save.title_id = sfo.GetValueFor<std::string>("TITLE_ID");
+    rm_nonprinting(save.main_title);
+    rm_nonprinting(save.detail);
+    rm_nonprinting(save.sub_title);
+
+    //save.user_id = sfo.GetValueFor<int>("ACCOUNT_ID");SAVEDATA_LIST_PARAM
+    save.userParam = sfo.GetValueFor<int>("SAVEDATA_LIST_PARAM");
+    save.blocks = sfo.GetValueFor<int>("SAVEDATA_BLOCKS");
+
+    return true;
+}
+
+//make a c++ function that checks if a folderhas more than 1 save folder in it by checking if the folder has a param.sfo file
+bool is_save_folder(std::string path)
+{
+    std::string tmp = fmt::format("{}/sce_sys/param.sfo", path);
+    if (is_sfo(tmp.c_str()))
+        return true;
+    else
+        return false;
+}
+// recursively check if a folder has more than 1 save folder in it
+// in c++
+bool is_nested_saves_recursive(std::string path, std::vector<std::string> &save_folders)
+{
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir (path.c_str())) != NULL) {
+        while ((ent = readdir (dir)) != NULL) {
+            if (ent->d_type == DT_DIR && strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
+                std::string tmp = fmt::format("{}/{}", path, ent->d_name);
+                if (is_save_folder(tmp))
+                    save_folders.push_back(tmp);
+            }
+        }
+        closedir (dir);
+    } else {
+        log_error("is_save_folder_recursive: could not open directory %s", path.c_str());
+        return false;
+    }
+    if (save_folders.size() > 1)
+        return true;
+    else
+        return false;
+}
 void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
 {
 
@@ -1339,7 +1394,7 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
         sceMsgDialogTerminate();
         return;
     }
-    if (sv <= RESTORE_GAME_SAVE) {
+    if (sv < RESTORE_GAME_SAVE) {
         if (usbpath() == -1) {
             ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(NO_USB));
             sceMsgDialogTerminate();
@@ -1384,10 +1439,16 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
                 }
             }
             else if(sv == RESTORE_GAME_SAVE){
-                dest = fmt::format("{}/save.ini", path);
+                dest = fmt::format("{}/sce_sys/param.sfo", path);
+                if (!if_exists(dest.c_str()) || !is_sfo(dest.c_str())) {
+                   ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
+                   goto unpatch;
+                } 
+
+                std::vector<uint8_t> sfo_data = readFile(dest);
                 save.blocks = -1;
                 //ini sets blocks
-                if(ini_parse(dest.c_str(), save_info, NULL) < 0 || save.blocks == -1){
+                if(sfo_data.empty() || !get_save_details(sfo_data, save)){
                    ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
                    goto unpatch;
                 } 
@@ -1420,7 +1481,7 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
 
             
             fmt::print("dir_name: {0:} | title_id: {0:}", save.dir_name, save.title_id);
-            log_info("userid:   %X", save.userid);
+            log_info("userid: 0xx%x", save.userid);
 
             save.path = fmt::format("/mnt/sandbox/ITEM00001_000{0:}/", mount); 
 
@@ -1438,21 +1499,6 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
                      ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(SD_TRANSFER_FAIL));
                      break;
                 }
-
-                dest = fmt::format("{0:}/itemzflow/saves/{1:x}/{2:}/{3:d}_{4:}/save.ini", usb_path, userId, tid, j+1, save.dir_name);
-
-                std::ofstream out(dest);
-                if(out.bad()){
-                    log_error("Failed to create ini file");
-                    ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(SD_TRANSFER_FAIL));
-                    break;
-                }
-
-                dest = fmt::format("[Save]\nsave_numb={0:d}\ndir_name={1:}\nmain_title={2:}\nsub_title={3:}\ndetail={4:}\nblocks={5:d}\nowner={6:d}" 
-                ,j+1, save.dir_name, save.main_title, save.sub_title, save.detail, save.blocks, save.userid);
-    
-                out << dest;
-                out.close();
 
                 ani_notify(NOTIFI_GAME, getLangSTR(SD_SAVED), fmt::format("{0:d}/{1:d}", j+1, saves));
 
@@ -1509,8 +1555,9 @@ restore_error:
     }
 
 unpatch:
-   if (unpatch_SceShellCore())
-        log_info("PS4 Save patches removed from memory");
+   log_info("unpatching ...");
+  // if (unpatch_SceShellCore())
+      //  log_info("PS4 Save patches removed from memory");
 
     sceSaveDataTerminate();
     sceMsgDialogTerminate();

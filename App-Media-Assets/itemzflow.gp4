@@ -14,11 +14,6 @@
     </chunk_info>
   </volume>
   <files img_no="0">
-    <file targ_path="langs/0/lang.ini" orig_path="langs/0/lang.ini" />
-    <file targ_path="langs/1/lang.ini" orig_path="langs/1/lang.ini" />
-    <file targ_path="langs/3/lang.ini" orig_path="langs/3/lang.ini" />
-    <file targ_path="langs/5/lang.ini" orig_path="langs/5/lang.ini" />
-    <file targ_path="langs/25/lang.ini" orig_path="langs/25/lang.ini" />
     <file targ_path="sce_sys/icon0.png" orig_path="sce_sys/icon0.png" />
     <file targ_path="sce_sys/param.sfo" orig_path="sce_sys/param.sfo" />
     <file targ_path="assets/notis/error.png" orig_path="assets/notis/error.png" />
@@ -28,7 +23,7 @@
     <file targ_path="assets/notis/kofi.png" orig_path="assets/notis/kofi.png" />
     <file targ_path="assets/notis/success.png" orig_path="assets/notis/success.png" />
     <file targ_path="assets/notis/warning.png" orig_path="assets/notis/warning.png" />
-	<file targ_path="assets/notis/profile.png" orig_path="assets/notis/profile.png" />
+    <file targ_path="assets/notis/profile.png" orig_path="assets/notis/profile.png" />
     <file targ_path="assets/backgroundUnitOffline.png" orig_path="assets/backgroundUnitOffline.png" />
     <file targ_path="assets/cover.png" orig_path="assets/cover.png" />
     <file targ_path="assets/disc.png" orig_path="assets/disc.png" />
@@ -48,11 +43,22 @@
     <file targ_path="assets/fonts/HelveticaWorld-Multi.ttf" orig_path="assets/fonts/HelveticaWorld-Multi.ttf" />
     <file targ_path="assets/fonts/NotoSansJP-Regular.ttf" orig_path="assets/fonts/NotoSansJP-Regular.ttf" />
     <file targ_path="eboot.bin" orig_path="../itemz-loader/bin/eboot.bin" />
+    <file targ_path="daemon/daemon.self" orig_path="../itemz-daemon/bin/eboot.bin" />
+    <file targ_path="daemon/daemon.debug_info" orig_path="../itemz-daemon/bin/daemon.oelf" />
     <file targ_path="ItemzCore.self" orig_path="../itemzflow/bin/ItemzCore.self" />
     <file targ_path="Media/curl.prx" orig_path="Media/curl.prx" />
+    <file targ_path="Media/store_api.prx" orig_path="Media/store_api.prx" />
     <file targ_path="Media/jb.prx" orig_path="Media/jb.prx" />
     <file targ_path="Media/rsa.pub" orig_path="Media/rsa.pub" />
     <file targ_path="Media/rsa.prx" orig_path="Media/rsa.prx" />
+    <file targ_path="assets/app_home_host.png" orig_path="assets/app_home_host.png" />
+    <file targ_path="langs/0/lang.ini" orig_path="langs/0/lang.ini" />
+    <file targ_path="langs/1/lang.ini" orig_path="langs/1/lang.ini" />
+    <file targ_path="langs/3/lang.ini" orig_path="langs/3/lang.ini" />
+    <file targ_path="langs/5/lang.ini" orig_path="langs/5/lang.ini" />
+    <file targ_path="langs/19/lang.ini" orig_path="langs/19/lang.ini" />
+    <file targ_path="langs/25/lang.ini" orig_path="langs/25/lang.ini" />
+    <file targ_path="langs/27/lang.ini" orig_path="langs/27/lang.ini" />
   </files>
   <rootdir>
     <dir targ_name="assets">
@@ -63,36 +69,14 @@
     <dir targ_name="langs">
       <dir targ_name="0" />
       <dir targ_name="1" />
-      <dir targ_name="10" />
-      <dir targ_name="11" />
-      <dir targ_name="12" />
-      <dir targ_name="13" />
-      <dir targ_name="14" />
-      <dir targ_name="15" />
-      <dir targ_name="16" />
-      <dir targ_name="17" />
-      <dir targ_name="18" />
-      <dir targ_name="19" />
-      <dir targ_name="2" />
-      <dir targ_name="20" />
-      <dir targ_name="21" />
-      <dir targ_name="22" />
-      <dir targ_name="23" />
-      <dir targ_name="24" />
-      <dir targ_name="25" />
-      <dir targ_name="26" />
-      <dir targ_name="27" />
-      <dir targ_name="28" />
-      <dir targ_name="29" />
       <dir targ_name="3" />
-      <dir targ_name="4" />
       <dir targ_name="5" />
-      <dir targ_name="6" />
-      <dir targ_name="7" />
-      <dir targ_name="8" />
-      <dir targ_name="9" />
+      <dir targ_name="19" />
+      <dir targ_name="25" />
+      <dir targ_name="27" />
     </dir>
     <dir targ_name="sce_sys" />
     <dir targ_name="Media" />
+    <dir targ_name="daemon" />
   </rootdir>
 </psproject>

@@ -399,7 +399,6 @@ static void send_LIST(ftps4_client_info_t* client, const char* path)
 				snprintf(full_path, sizeof(full_path), "%s/%s", path, dent->d_name);
 
 				err = stat(full_path, &st);
-
 				if (err == 0) {
 					char link_path[PATH_MAX];
 					if (S_ISLNK(st.st_mode)) {
@@ -424,7 +423,7 @@ static void send_LIST(ftps4_client_info_t* client, const char* path)
 					memset(buffer, 0, sizeof(buffer));
 				}
 				else {
-					log_debug("[FTP Module] %s stat returned %d", full_path, errno);
+					log_debug("[FTP Module] %s stat returned %s", full_path, strerror(errno));
 				}
 			}
 			else {

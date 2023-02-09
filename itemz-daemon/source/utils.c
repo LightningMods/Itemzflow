@@ -22,7 +22,7 @@ sqlite3 *db;
 #define TEST_USER_AGENT	"Daemon/PS4"
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 01
+#define VERSION_MINOR 02
 
 const unsigned char completeVersion[] = {
   VERSION_MAJOR_INIT,
@@ -85,6 +85,28 @@ int PKG_ERROR(const char* name, int ret)
 {
     log_error( "%s error: %i", name, ret);
     return ret;
+}
+
+void* prx_func_loader(const char* prx_path, const char* symbol) {
+
+    void* addrp = NULL;
+    log_info("Loading %s", prx_path);
+     
+    int libcmi = sceKernelLoadStartModule(prx_path, 0, NULL, 0, 0, 0);
+    if(libcmi < 0){
+        log_error("Error loading prx: 0x%X", libcmi);
+        return addrp;
+    }
+    else
+        log_debug("%s loaded successfully", prx_path);
+
+    if(sceKernelDlsym(libcmi, symbol, &addrp) < 0){
+        log_error("Symbol %s NOT Found", symbol);
+    }
+    else
+        log_debug("Function %s | addr %p loaded successfully", symbol, addrp);
+
+    return addrp;
 }
 
 /* we use bgft heap menagement as init/fini as flatz already shown at 
@@ -211,7 +233,7 @@ uint32_t pkginstall(const char *path, bool is_if_update)
 {
     int  ret = -1;
     int  task_id = -1;
-    bool is_app = false;
+    int is_app = false;
     char title_id[30];
     SceBgftTaskProgress progress_info;
 
@@ -258,6 +280,8 @@ retry:
             log_info("Uninstalled %s, retrying install...", &title_id[0]);
             goto retry;
         }
+        else if(ret)
+            return PKG_ERROR("sceBgftDownloadRegisterTaskByStorageEx", ret);
 
         log_info("Task ID(s): 0x%08X", task_id);
 
@@ -281,6 +305,22 @@ retry:
         return PKG_ERROR("no file at", ret);
 
     return 0;
+}
+
+uint32_t sdkVersion = -1;
+
+uint32_t ps4_fw_version(void)
+{
+    //cache the FW Version
+    if (0 < sdkVersion) {
+        size_t   len = 4;
+        // sysKernelGetLowerLimitUpdVersion == machdep.lower_limit_upd_version
+        // rewrite of sysKernelGetLowerLimitUpdVersion
+        sysctlbyname("machdep.lower_limit_upd_version", &sdkVersion, &len, NULL, 0);
+    }
+
+    // FW Returned is in HEX
+    return (sdkVersion >> 16);
 }
 
 
@@ -364,13 +404,14 @@ bool if_exists(const char* path)
 
     return true;
 }
-
+bool reboot_daemon = false;
 void SIG_Handler(int sig_numb)
 {
     char profpath[150];
     void* array[100];
 
-    sceKernelIccSetBuzzer(2);
+    if(sig_numb != SIGQUIT){
+       sceKernelIccSetBuzzer(2);
 
     snprintf(profpath, 149, "/mnt/proc/%i/", getpid());
 
@@ -390,7 +431,7 @@ void SIG_Handler(int sig_numb)
     }
     //
 
-    log_debug("############# DAEMON HAS CRASHED ##########");
+    log_debug("############# DAEMON HAS CRASHED with SIG %i ##########", sig_numb);
     log_debug("# Thread ID: %i", pthread_getthreadid_np());
     log_debug("# PID: %i", getpid());
 
@@ -417,15 +458,14 @@ void SIG_Handler(int sig_numb)
     }
     log_debug("###################  Backtrace  ########################");
     backtrace(array, 100);
-    
-    if(sig_numb != SIGQUIT)
-         notify("ItemzDaemon has crashed, Restarting it...");
+    notify("ItemzDaemon has crashed, exiting...");
+    }
 
     rejail();
-    //if(sig_numb != SIGQUIT)
-      //  sceSystemServiceLoadExec("/app0/eboot.bin", 0);
-    //else
-    sceSystemServiceLoadExec("exit", 0);
+    if(reboot_daemon)
+        sceSystemServiceLoadExec("/app0/eboot.bin", 0);
+    else
+       sceSystemServiceLoadExec("exit", 0);
 
 }
 
@@ -653,6 +693,29 @@ cleanup:
     return 0;
 
 }
+
+void save_fuse_ip(char* ip) {
+    
+    FILE* fp = fopen("/data/itemzflow_daemon/fuse_ip.txt", "w");
+    if(fp == NULL) 
+       return;
+    fprintf(fp, "%s", ip);
+    fclose(fp);
+}
+
+char* load_fuse_ip() {
+    char* ip = (char*) malloc(16); // allocate memory for the IP address
+    FILE* fp = fopen("/data/itemzflow_daemon/fuse_ip.txt", "r");
+    if(ip == NULL || fp == NULL){
+         if(ip)
+            free(ip);
+         return NULL;
+    }
+    fscanf(fp, "%s", ip);
+    fclose(fp);
+    return ip;
+}
+
 bool full_init()
 {
     
@@ -670,6 +733,8 @@ bool full_init()
     mkdir("/data/itemzflow_daemon", 0777);
     mkdir("/mnt/usb0/itemzflow", 0777);
     unlink(DAEMON_LOG_PS4);
+    // get fuse ip
+    fuse_session_ip = load_fuse_ip();
 
     /*-- INIT LOGGING FUNCS --*/
     log_set_quiet(false);
@@ -727,10 +792,8 @@ void notify(char* message)
 bool create_stat_db(const char* path){
     char *err_msg = 0;
     
-  //  if(!if_exists("/user/app/ITEM00001/")){
-   //     notify("Daemon Stats are only available with ItemzFlow Installed!");
-    //    return false;
-   // }
+    if(!if_exists("/user/app/ITEM00001/"))
+       mkdir("/user/app/ITEM00001/", 0777);
 
     mkdir("/user/app/ITEM00001/game_stats/", 0777);
     int rc = sqlite3_open(path, &db);
@@ -754,6 +817,7 @@ bool create_stat_db(const char* path){
     sqlite3_close(db);
     return true;
 }
+
 
 void DumpHex(const void* data, size_t size) {
 	char ascii[17];

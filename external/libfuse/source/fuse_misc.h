@@ -9,18 +9,7 @@
 #include "config.h"
 #include <pthread.h>
 
-/* 
-Modified by T.MOMOZONO,  08/05/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 #define THREAD_NAME_MAXLEN (32)
-#define SCE_ULPMGR_OBJNAME_DECI4H_PREFIX			"SceDeci4h"
-#define SCE_ULPMGR_OBJNAME_DECI4H_PREFIX_DRFP		SCE_ULPMGR_OBJNAME_DECI4H_PREFIX "Drfp"
-#define SCE_DRFP_FUSEWORKTHREAD_NAME SCE_ULPMGR_OBJNAME_DECI4H_PREFIX_DRFP "Fus%d"
 #define SCE_ULPMGR_THREAD_PRIO_BASE		(903)
 
 /* Versioned symbols confuse the dynamic linker in uClibc */

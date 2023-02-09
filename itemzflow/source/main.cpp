@@ -15,6 +15,7 @@
 #include <patcher.h>
 #include <sys/mount.h>
 #include "log.h"
+
 double dt, u_t = 0;
 
 int libcmi = -1;
@@ -22,6 +23,8 @@ OrbisGlConfig* GlConf;
 OrbisPadConfig *confPad;
 bool flag=true;
 extern std::vector<item_t> all_apps;
+std::atomic_bool is_idle = false;
+
 
 int    selected_icon;
 struct timeval  t1, t2;
@@ -32,6 +35,7 @@ static int (*jailbreak_me)(void) = NULL;
 
 extern std::atomic_bool found_usb;
 extern std::atomic_int inserted_disc;
+std::atomic_bool reset_idle_timer = false;
 extern bool is_connected_app;
 
 extern "C" void standalone_main(void);
@@ -67,8 +71,27 @@ void* ItemzCore_Util_thread(void* args) {
        ani_notify(NOTIFI_PROFILE, fmt::format("{0:}: {1:}", getLangSTR(SIGN_IN_USER_NOTIF), name), "");
     }
 
+    time_t idle_clock = time(NULL);
+
     while (true) 
     {
+        if(reset_idle_timer.load()) {
+            idle_clock = time(NULL);
+            reset_idle_timer = false;
+            is_idle = false;
+            GLES2_refresh_sysinfo();
+        }
+
+        time_t fifteenMinutesAgo = idle_clock + 15 * 60;
+        if (!is_idle.load() && time(NULL) > fifteenMinutesAgo) {
+            log_info("15 mins have passed and its now idling %llx %llx",idle_clock, fifteenMinutesAgo);
+            is_idle = true;
+            GLES2_refresh_sysinfo();
+        }
+
+        if(is_idle.load()) {
+            continue;
+        }
         // re-get the userid incase it changed
         sceUserServiceGetForegroundUser(&userId);
 
@@ -77,8 +100,9 @@ void* ItemzCore_Util_thread(void* args) {
             // Function is thread-safe
             // Notfiy func has mutexs in place for threads
             ani_notify(NOTIFI_GAME, getLangSTR(CON_DIS), getLangSTR(CON_DIS_2));
+            is_idle = true;
+            GLES2_refresh_sysinfo();
             log_error("scePadReadState: %x, userid: %x, handle: %x", ret, userId, scePadGetHandle(userId,0,0));
-            sleep(9);
         }
 
         //check if theres a disc
@@ -113,6 +137,11 @@ void* ItemzCore_Util_thread(void* args) {
 
         if(mins_played.load() == MIN_STATUS_RESET && //check if a game is open before asking the daemon
         !title_id.empty() && app_status != APP_NA_STATUS) { // check if an app is already selected too, TODO: Atmoic int for app_status
+            
+            if(is_vapp(title_id)){
+                mins_played = MIN_STATUS_VAPP;
+                continue;
+            }
             memset(&ipc_msg[0], 0, sizeof ipc_msg);
             strcpy((char*)&ipc_msg[1], title_id.c_str());
 
@@ -146,19 +175,17 @@ void* ItemzCore_Util_thread(void* args) {
            log_info("[UTIL] USB removed");
         }
 
-        sleep(1);
+       sleep(1);
     }
  
     log_error("Utility Thread failed to start");
 
     return NULL;
 }
-int (*fuse_main_real_2)(int argc, char *argv[], const struct fuse_operations *op, size_t op_size, void *user_data);
-int update_progress(void *p, int64_t dltotal, int64_t dlnow, int64_t ultotal, int64_t ulnow)
-{
-    log_info("Download: %lld / %lld", dlnow, dltotal);
-    return 0;
-}
+struct timeval last_tv;
+int button_numb = -1;
+int if_numb = -1;
+bool check_if_held = false;
 
 void updateController()
 {
@@ -175,6 +202,7 @@ void updateController()
         }
         if(orbisPadGetButtonPressed(ORBISPAD_TOUCH_PAD))
         {
+            reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_L1|ORBISPAD_R1) )
         {
@@ -198,41 +226,68 @@ void updateController()
             orbisPadSetCurrentButtonsPressed(buttons);
         }
 
-        if(orbisPadGetButtonPressed(ORBISPAD_UP)//) || orbisPadGetButtonHold(ORBISPAD_UP))
-        || confPad->padDataCurrent->ly < (127 - DELTA))
-        {
+        if(orbisPadGetButtonPressed(ORBISPAD_UP) || confPad->padDataCurrent->ly < (127 - DELTA)){
             fw_action_to_cf(UP);
+            if(!(confPad->padDataCurrent->ly < (127 - DELTA))){
+               check_if_held = true;
+               button_numb = ORBISPAD_UP;
+               if_numb = UP;
+            }
+            reset_idle_timer = true;
+            gettimeofday(&last_tv, NULL);
         }
         else
-        if(orbisPadGetButtonPressed(ORBISPAD_DOWN)// || orbisPadGetButtonHold(ORBISPAD_DOWN))
+        if(orbisPadGetButtonPressed(ORBISPAD_DOWN)
         || confPad->padDataCurrent->ly > (127 + DELTA))
         {
-
             fw_action_to_cf(DOW);
+            if(!(confPad->padDataCurrent->ly > (127 + DELTA))){
+               check_if_held = true;
+               button_numb = ORBISPAD_DOWN;
+               if_numb = DOW;
+            }
+            reset_idle_timer = true;
+            gettimeofday(&last_tv, NULL);
         }
         else
-        if(orbisPadGetButtonPressed(ORBISPAD_RIGHT)// || orbisPadGetButtonHold(ORBISPAD_RIGHT))
+        if(orbisPadGetButtonPressed(ORBISPAD_RIGHT) 
         || confPad->padDataCurrent->lx > (127 + DELTA))
         {
             fw_action_to_cf(RIG);
+            if(!(confPad->padDataCurrent->lx > (127 + DELTA))){
+              check_if_held = true;
+              button_numb = ORBISPAD_RIGHT;
+              if_numb = RIG;
+            }
+            reset_idle_timer = true;
+            gettimeofday(&last_tv, NULL);
         }
         else
-        if(orbisPadGetButtonPressed(ORBISPAD_LEFT)// || orbisPadGetButtonHold(ORBISPAD_LEFT))
+        if(orbisPadGetButtonPressed(ORBISPAD_LEFT) 
         || confPad->padDataCurrent->lx < (127 - DELTA))
         {
             fw_action_to_cf(LEF);
+            if(!(confPad->padDataCurrent->lx < (127 - DELTA))){
+               check_if_held = true;
+               button_numb = ORBISPAD_LEFT;
+               if_numb = LEF;
+            }
+            reset_idle_timer = true;
+            gettimeofday(&last_tv, NULL);
         }
         else
         if(orbisPadGetButtonPressed(ORBISPAD_TRIANGLE))
         {
             log_info( "Triangle pressed exit");
             fw_action_to_cf(TRI);
+            reset_idle_timer = true;
         }
         else
         if(orbisPadGetButtonPressed(ORBISPAD_CIRCLE))
         {
             log_info( "Circle pressed");
             fw_action_to_cf(CIR);
+            reset_idle_timer = true;
 
         }
         else
@@ -240,11 +295,13 @@ void updateController()
         {
             log_info( "Cross pressed");
             fw_action_to_cf(CRO);
+            reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_SQUARE))
         {
             log_info( "Square pressed"); 
             fw_action_to_cf(SQU);
+            reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_L1))
         {
@@ -253,24 +310,29 @@ void updateController()
                trigger_dump_frame();
 
             fw_action_to_cf(L1);
+            reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_L2))
         {
             log_info( "L2 pressed");
             fw_action_to_cf(L2);
+
+            reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_R1))
         {
             fw_action_to_cf(R1);
+            reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_R2))
         {
-
+            reset_idle_timer = true;
         }
         if (orbisPadGetButtonPressed(ORBISPAD_OPTIONS))
         {
             fw_action_to_cf(OPT);
-            //test55();
+            reset_idle_timer = true;
+            //patch_lnc_debug();
 
         }
     }
@@ -295,6 +357,7 @@ static bool initAppGl()
             log_info("[%s] glViewport failed: 0x%08X", __FUNCTION__, ret);
             return false;
         }
+        
         //      glClearColor(0.f, 0.f, 1.f, 1.f);          // blue RGBA
         glClearColor(0.1211, 0.1211, 0.1211, 1.); // background color
 
@@ -331,11 +394,11 @@ bool initApp()
 #define WEN  (2048)
 unsigned int frame = 1,
 time_ms = 0;
-
 int main(int argc, char* argv[])
 {
 
     int ret = -1;
+    bool speed1 = true,speed2 = false,speed3 = false;
     pthread_t utility_thread = NULL;
     /* load custom .prx, resolve and call a function */
     rejail_multi = (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "rejail_multi");
@@ -382,7 +445,8 @@ int main(int argc, char* argv[])
     t2 = t1;
 
     //close any still running dialogs
-     sceMsgDialogTerminate();
+    sceMsgDialogTerminate();
+    gettimeofday(&last_tv, NULL);
 
     /// enter main render loop
     while (flag)
@@ -392,6 +456,35 @@ int main(int argc, char* argv[])
         //the countroller update and the GLES UI
          if (frame != 1)
             updateController();
+
+    if(check_if_held && !orbisPadGetButtonReleased(button_numb)) {
+       struct timeval tv;
+       gettimeofday(&tv, NULL);
+       //log_info("Holding UP %i %i", tv.tv_usec, last_tv.tv_usec);
+       int elapsed_time = (tv.tv_sec - last_tv.tv_sec) * 1000000 + (tv.tv_usec - last_tv.tv_usec);
+       if(speed1 && elapsed_time > 500000) {
+          fw_action_to_cf(if_numb);
+          gettimeofday(&last_tv, NULL);
+          speed1 = false;
+          speed2 = true;
+       }
+       else if(speed2 && elapsed_time > 300000) {
+           fw_action_to_cf(if_numb);
+           gettimeofday(&last_tv, NULL);
+           speed2 = false;
+           speed3 = true;
+       }
+       else if(speed3 && elapsed_time > 50000) {
+            fw_action_to_cf(if_numb);
+            gettimeofday(&last_tv, NULL);
+       }
+    }
+    else {
+      check_if_held = false;
+      speed1 = true;
+      speed2 = false;
+      speed3 = false;
+    }
 
          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

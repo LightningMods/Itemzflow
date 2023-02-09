@@ -88,3 +88,6 @@ void sfo_patch(sfo_context_t *inout, unsigned int flags);
 
 std::string sfo_get_param_value_string(sfo_context_t *in, const char* param);
 int sfo_get_param_value_int(sfo_context_t *in, const char* param);
+bool is_nested_saves_recursive(std::string path, std::vector<std::string> &save_folders);
+bool is_save_folder(std::string path);
+

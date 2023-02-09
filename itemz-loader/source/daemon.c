@@ -7,29 +7,13 @@
 #include <sys/socket.h>
 #include <stdio.h>
 #include <sys/_iovec.h>
+#include "md5.h"
 #include <sys/un.h>
 #include <string.h>
 #include <stdlib.h>
 
 
 #define DAEMON_PATH "/system/vsh/app/ITEM00002"
-#define  LATEST_DAEMON_VERSION 0x1001
-
-int daemon_ver = 0x1337;
-static int daemon_ini(void* user, const char* section, const char* name,
-    const char* value, int idc)
-{
-
-#define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
-
-    if (MATCH("Daemon", "version")) {
-        logshit("DVERLL: %s\n", value);
-        daemon_ver = atoi(value);
-    }
-
-    return 1;
-}
-
 
 /* *********************** IPC SHIT **********************/
 #define IPC_SOC "/system_tmp/IPC_Socket"
@@ -89,19 +73,19 @@ int IPCSendCommand(enum IPC_Commands cmd, uint8_t* IPC_BUFFER) {
     if (is_daemon_connected)
     {     
 
-        logshit(" IPC Connected via Domain Socket\n");
+        logshit(" IPC Connected via Domain Socket");
 
         IPC_BUFFER[0] = cmd; // First byte is always command
 
-        logshit(" Sending IPC Command\n");
+        logshit(" Sending IPC Command");
         IPCSendData(IPC_BUFFER, 100);
-        logshit(" Sent IPC Command %i\n", cmd);
+        logshit(" Sent IPC Command %i", cmd);
 
         memset(IPC_BUFFER, 0, 100);
 
         if (cmd == DEAMON_UPDATE)
         {
-            logshit(" Daemon Updating...\n");
+            logshit(" Daemon Updating...");
             is_daemon_connected = false;
             return DEAMON_UPDATING;
         }
@@ -110,20 +94,20 @@ int IPCSendCommand(enum IPC_Commands cmd, uint8_t* IPC_BUFFER) {
         uint32_t readSize = IPCReceiveData(IPC_BUFFER, 100);
         if (readSize > 0 && readSize != -1)
         {
-            logshit(" Got message with Size: %i from Daemon\n", readSize);
+            logshit("Got message with Size: %i from Daemon", readSize);
             //Get IPC Error code
             error = IPC_BUFFER[0];
             if (error != INVALID)
             {
                 // Modifies the Buffer to exclude the error code
                 GetIPCMessageWithoutError(IPC_BUFFER, readSize);
-                logshit("[ItemzDaemon] Daemon IPC Response: %s, code: %s, readSize: %i\n", IPC_BUFFER, error == NO_ERROR ? "NO_ERROR" : "Other", readSize);
+                logshit("[ItemzDaemon] Daemon IPC Response: %s, code: %s, readSize: %i", IPC_BUFFER, error == NO_ERROR ? "NO_ERROR" : "Other", readSize);
             }
             else
-               logshit("[ItemzDaemon] Daemon returned INVAL\n");
+               logshit("[ItemzDaemon] Daemon returned INVAL");
         }
         else
-            logshit("IPCReceiveData failed with: %s\n", strerror(errno));
+            logshit("IPCReceiveData failed with: %s", strerror(errno));
     }
 
 
@@ -132,21 +116,62 @@ int IPCSendCommand(enum IPC_Commands cmd, uint8_t* IPC_BUFFER) {
 /* *********************** IPC SHIT **********************/
 /* *********************** daemon shit **********************/
 
+int MD5_hash_compare(const char* file1, const char* file2)
+{
+	unsigned char c[MD5_HASH_LENGTH];
+	unsigned char c2[MD5_HASH_LENGTH];
+	MD5_CTX mdContext, mdContext2;
+	int bytes2, bytes = 0;
+	unsigned char data2[1024];
+	unsigned char data[1024];
+
+	FILE* f1 = fopen(file1, "rb");
+	if(!f1) 
+       logshit("cannot open: %s", file1);
+       return true;
+	
+	FILE* f2 = fopen(file2, "rb");
+	if(!f2){
+      logshit("cannot open: %s", file2);
+	  fclose(f1);
+      return true;
+	}
+
+	MD5_Init(&mdContext);
+	while ((bytes = fread(data, 1, 1024, f1)) != 0)
+		MD5_Update(&mdContext, data, bytes);
+	MD5_Final(c, &mdContext);
+
+	MD5_Init(&mdContext2);
+	while ((bytes2 = fread(data2, 1, 1024, f2)) != 0)
+		MD5_Update(&mdContext2, data2, bytes2);
+	MD5_Final(c2, &mdContext2);
+
+	for (int i = 0; i < 16; i++)
+	{
+		if (c[i] != c2[i]){
+	       fclose(f1);
+	       fclose(f2);
+		   return true;
+		}
+	}
+
+	fclose(f1);
+	fclose(f2);
+
+	return false;
+}
 
 bool is_daemon_outdated(void)
 {
-    
-    if (!if_exists(DAEMON_PATH"/daemon.ini"))
-        return false;
-    else
+    bool res = true;
+    if (if_exists(DAEMON_PATH"/eboot.bin"))
     {
-        logshit(" Daemon INI Does exist\n");
-        int error = ini_parse(DAEMON_PATH"/daemon.ini", (ini_handler)daemon_ini, NULL);
-        if (error) { logshit("Bad config file (first error on line %d)!\n", error); return false; }
-        logshit("Daemon Version: %x, Latest Version: %x, Is Outdated?: %s\n", daemon_ver, LATEST_DAEMON_VERSION, daemon_ver == LATEST_DAEMON_VERSION ? "No" : "Yes");
+        res = MD5_hash_compare(DAEMON_PATH"/eboot.bin", "/mnt/sandbox/pfsmnt/ITEM00001-app0/daemon/daemon.self");
+        logshit("Daemon Is Outdated?: %s", res ? "Yes" : "No");
     }
-
-    return (daemon_ver == LATEST_DAEMON_VERSION);
+    
+    return res;
 }
 
 void build_iovec(struct iovec** iov, int* iovlen, const char* name, const void* val, size_t len) {
@@ -198,14 +223,14 @@ int mountfs(const char* device, const char* mountpoint, const char* fstype, cons
         build_iovec(&iov, &iovlen, "mask", mode, -1);
     }
 
-    logshit("##^  [I] Mounting %s \"%s\" to \"%s\"\n", fstype, device, mountpoint);
+    logshit("##^  [I] Mounting %s \"%s\" to \"%s\"", fstype, device, mountpoint);
     ret = nmount(iov, iovlen, flags);
     if (ret < 0) {
-        logshit("##^  [E] Failed: %d (errno: %d).\n", ret, errno);
+        logshit("##^  [E] Failed: %d (errno: %d).", ret, errno);
         goto error;
     }
     else {
-        logshit("##^  [I] Success.\n");
+        logshit("##^  [I] Success.");
     }
 
 error:
@@ -227,31 +252,31 @@ uint32_t Launch_Daemon(const char* TITLE_ID) {
         param.check_flag = SkipSystemUpdateCheck;
 
         return sceLncUtilLaunchApp(TITLE_ID, NULL, &param);
-
     }
   
     return 0;
 }
 
+#define	MNT_UPDATE	0x0000000000010000ULL /* not real mount, just update */
 bool boot_daemon_services()
 {
 
     char buff[100];
     char IPC_BUFFER[100];
     int fd = -1;
-    logshit("Booting Daemon Services\n");
+    logshit("Booting Daemon Services");
 
-    if (!if_exists(DAEMON_PATH) || !is_daemon_outdated())
+    if (!if_exists(DAEMON_PATH) || is_daemon_outdated())
     {
         if (!!mountfs("/dev/da0x4.crypt", "/system", "exfatfs", "511", MNT_UPDATE))
         {
-            logshit("mounting /system failed with %s.\n", strerror(errno));
+            logshit("mounting /system failed with %s.", strerror(errno));
             return false;
         }
         else
         {
 
-            logshit("Remount Successful\n");
+            logshit("Remount Successful");
             //Delete the folder and all its files
             rmtree(DAEMON_PATH);
             mkdir(DAEMON_PATH, 0777);
@@ -261,36 +286,18 @@ bool boot_daemon_services()
             if (copyFile("/mnt/sandbox/pfsmnt/ITEM00001-app0/Media/jb.prx", DAEMON_PATH"/Media/jb.prx") != -1 && 
             copyFile("/system/vsh/app/NPXS21007/sce_sys/param.sfo", DAEMON_PATH"/sce_sys/param.sfo") != -1)
             {
-
-               if ((fd = open(DAEMON_PATH"/eboot.bin", O_WRONLY | O_CREAT | O_TRUNC, 0777)) > 0 && fd != -1) {
-                    write(fd, daemon_eboot, daemon_eboot_size);
-                    close(fd);
-
-                    snprintf(&buff[0], 99, "[Daemon]\nversion=%i\n", LATEST_DAEMON_VERSION);
-                    fd = open(DAEMON_PATH"/daemon.ini", O_WRONLY | O_CREAT | O_TRUNC, 0777);
-                    if (fd >= 0)
-                    {
-                        write(fd, &buff[0], strlen(&buff[0]));
-                        close(fd);
-                    }
-                    else {
-                        logshit("Creating the Daemon ini failed to create: %s\n", strerror(errno));
-                        return false;
-                    }
-
-                    chmod(DAEMON_PATH"/daemon.ini", 0777);
+                if (copyFile("/mnt/sandbox/pfsmnt/ITEM00001-app0/daemon/daemon.self", DAEMON_PATH"/eboot.bin") == 0) {
                     IPCSendCommand(DEAMON_UPDATE, (uint8_t *)&IPC_BUFFER[0]);
-
                 }
                 else
                 {
-                    logshit("Creating the Daemon eboot failed to create: %s\n", strerror(errno));
+                    logshit("Creating the Daemon eboot failed to create: %s", strerror(errno));
                     return false;
                 }
             }
             else
             {
-                logshit("Copying Daemon files failed\n");
+                logshit("Copying Daemon files failed");
                 return false;
             }
         }
@@ -300,10 +307,10 @@ bool boot_daemon_services()
     //Launch Daemon with silent    
     if ((appid & ~0xFFFFFF) != 0x60000000) {
         appid = Launch_Daemon("ITEM00002");
-        logshit("Launched Daemon AppId: %x\n", appid);
+        logshit("Launched Daemon AppId: %x", appid);
     }
     else
-       logshit("Found Daemon AppId: %x\n", appid);
+       logshit("Found Daemon AppId: %x", appid);
 
 
 

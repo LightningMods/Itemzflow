@@ -44,7 +44,8 @@ restart:
 		   interrupted), EAGAIN (nonblocking I/O), ENODEV (filesystem
 		   umounted) */
 		if (err != EINTR && err != EAGAIN)
-			perror("fuse: reading device");
+			libfuse_print("fuse: error reading device");
+
 		return -err;
 	}
 	if ((size_t) res < sizeof(struct fuse_in_header)) {
@@ -80,14 +81,7 @@ static void fuse_kern_chan_destroy(struct fuse_chan *ch)
 	close(fuse_chan_fd(ch));
 }
 
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
+// PS4 BUF SIZE
 #define MIN_BUFSIZE 0x41000
 
 struct fuse_chan *fuse_kern_chan_new(int fd)

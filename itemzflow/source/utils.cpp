@@ -163,6 +163,7 @@ static int theme_info(void* user, const char* section, const char* name,
 
     if (MATCH("THEME", "Author")) {
         set->author = value;
+
     }
     if (MATCH("THEME", "Date")) {
         set->date = value;
@@ -224,6 +225,14 @@ size_t CalcAppsize(const char* filename) {
         return 0;
     }
     return st.st_size;   
+}
+
+double CalcFreeGigs(const char* path) {
+    struct statfs st;
+    if (statfs(path, &st) != 0) {
+        return 0;
+    }
+    return (double)st.f_bfree * st.f_bsize / (1024 * 1024 * 1024);
 }
 
 #if __cplusplus
@@ -437,8 +446,14 @@ bool MD5_file_compare(const char* file1, const char* file2)
 	int i;
 	FILE* f1 = fopen(file1, "rb");
 	FILE* f2 = fopen(file2, "rb");
-    if(!f1 || !f2)
+    if(!f1)
     {
+        log_error("Could not open both files");
+        return false;
+    }
+    if(!f2)
+    {
+        fclose(f1);
         log_error("Could not open both files");
         return false;
     }
@@ -682,6 +697,8 @@ static int print_ini_info(void* user, const char* section, const char* name,
 
 #define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
 
+    //log_info("Settings: %s = %s", name, value);
+
     if (MATCH("Settings", "Daemon_on_start")) {
         set->setting_bools[Daemon_on_start] = atoi(value);
     }
@@ -729,6 +746,13 @@ static int print_ini_info(void* user, const char* section, const char* name,
     else if (MATCH("Settings", "Reflections")) {
         use_reflection = atoi(value);
     }
+    else if (MATCH("Settings", "Fuse_IP")) {
+         set->setting_strings[FUSE_PC_NFS_IP] = value;
+    }
+    else if(MATCH("Settings", "Internal_update")){
+        set->setting_bools[INTERNAL_UPDATE] = atoi(value);
+    }
+
    
     return 1;
 }
@@ -751,10 +775,14 @@ bool LoadOptions(ItemzSettings *set)
     set->sort_cat = NO_CATEGORY_FILTER;
     set->sort_by = NA_SORT;
     set->setting_bools[using_sb] = true;
+    set->setting_bools[INTERNAL_UPDATE] = false;
     set->setting_bools[Show_install_prog] = true;
     set->setting_bools[Show_Buttons] = true;
     set->setting_bools[HomeMenu_Redirection] = false;
     set->setting_bools[cover_message] = true;
+    set->setting_strings[THEME_NAME] = "Default Theme";
+    set->setting_strings[THEME_AUTHOR] = "LM & MZ";
+    set->setting_strings[THEME_VERSION] = "1.00";
     set->ItemzCore_AppId = sceSystemServiceGetAppIdOfMiniApp();
     set->ItemzDaemon_AppId = -1;
     if(usb_num != -1)
@@ -811,6 +839,10 @@ bool LoadOptions(ItemzSettings *set)
     fmt::print("[THEME] Version: {}", t.version);
     fmt::print("[THEME] Author: {}", t.author);
     fmt::print("[THEME] Date: {}", t.date);
+
+    set->setting_strings[THEME_NAME] = t.name;
+    set->setting_strings[THEME_VERSION] = t.version;
+    set->setting_strings[THEME_AUTHOR] = t.author;
 
     log_debug("[THEME] Image: %s", t.is_image ? "Yes" : "No");
     log_debug("[THEME] Font: %s", t.has_font ? "Yes" : "No");
@@ -939,6 +971,8 @@ no_theme:
     fmt::print("set->ini_path: {}", set->setting_strings[INI_PATH]);
     fmt::print("set->dumper_path: {}", set->setting_strings[DUMPER_PATH]);
     fmt::print("get->fnt_path: {}", set->setting_strings[FNT_PATH]);
+    fmt::print("set->fuse_ip: {}", set->setting_strings[FUSE_PC_NFS_IP]);
+    fmt::print("set->RESTRICTED: {}", set->setting_bools[INTERNAL_UPDATE]);
 
     log_info( "set->Daemon_...   : %s", set->setting_bools[Daemon_on_start] ? "ON" : "OFF");
     log_info( "set->HomeMen...   : %s", set->setting_bools[HomeMenu_Redirection] ? "ItemzFlow (ON)" : "Orbis (OFF)");
@@ -955,7 +989,7 @@ no_theme:
 
 bool SaveOptions(ItemzSettings *set)
 {  
-    std::string ini_content = fmt::format("[Settings]\nSort_By={0:d}\nSort_Cat={1:d}\nSecure_Boot=1\nTTF_Font={2:}\nShow_install_prog={3:d}\nHomeMenu_Redirection={4:d}\nDaemon_on_start={5:d}\ncover_message={6:d}\nDumper_Path={7:}\nMP3_Path={8:}\nShow_Buttons={9:d}\nEnable_Theme={10:d}\nImage_path={11:}\nReflections={12:d}", (int)set->sort_by, (int)set->sort_cat, set->setting_strings[FNT_PATH], set->setting_bools[Show_install_prog],  set->setting_bools[HomeMenu_Redirection],  set->setting_bools[Daemon_on_start],  set->setting_bools[cover_message], set->setting_strings[DUMPER_PATH], set->setting_strings[MP3_PATH],  set->setting_bools[Show_Buttons],  set->setting_bools[using_theme], set->setting_strings[IMAGE_PATH], use_reflection);
+    std::string ini_content = fmt::format("[Settings]\nSort_By={0:d}\nSort_Cat={1:d}\nSecure_Boot=1\nTTF_Font={2:}\nShow_install_prog={3:d}\nHomeMenu_Redirection={4:d}\nDaemon_on_start={5:d}\ncover_message={6:d}\nDumper_Path={7:}\nMP3_Path={8:}\nShow_Buttons={9:d}\nEnable_Theme={10:d}\nImage_path={11:}\nReflections={12:d}\nFuse_IP={13:}\n{14:}={15:d}", (int)set->sort_by, (int)set->sort_cat, set->setting_strings[FNT_PATH], set->setting_bools[Show_install_prog],  set->setting_bools[HomeMenu_Redirection],  set->setting_bools[Daemon_on_start],  set->setting_bools[cover_message], set->setting_strings[DUMPER_PATH], set->setting_strings[MP3_PATH],  set->setting_bools[Show_Buttons],  set->setting_bools[using_theme], set->setting_strings[IMAGE_PATH], use_reflection,  set->setting_strings[FUSE_PC_NFS_IP], set->setting_bools[INTERNAL_UPDATE] ? "Internal_update" : "RESTRICTED" , set->setting_bools[INTERNAL_UPDATE]);
 
     std::ofstream out(set->setting_strings[INI_PATH]);
     if(out.bad()){
@@ -971,6 +1005,7 @@ bool SaveOptions(ItemzSettings *set)
     fmt::print("set->dumper_path: {}", set->setting_strings[DUMPER_PATH]);
     fmt::print("get->fnt_path: {}", set->setting_strings[FNT_PATH]);
     fmt::print("set->mp3_path: {}", set->setting_strings[MP3_PATH]);
+    fmt::print("set->fuse_ip: {}", set->setting_strings[FUSE_PC_NFS_IP]);
 
     log_info("set->Daemon_...   : %s", set->setting_bools[Daemon_on_start] ? "ON" : "OFF");
     log_info("set->HomeMen...   : %s", set->setting_bools[HomeMenu_Redirection] ? "ItemzFlow (ON)" : "Orbis (OFF)");
@@ -979,6 +1014,7 @@ bool SaveOptions(ItemzSettings *set)
     log_info("set->cover_message : %i", set->setting_bools[cover_message]);
     log_info("set->Dump_opt     : %i", set->Dump_opt);
     log_info("set->using_theme  : %i", set->setting_bools[using_theme]);
+    log_info("set->RESTIRCTED   : %i", set->setting_bools[INTERNAL_UPDATE]);
     log_info("set->Install_prog.: %s", set->setting_bools[Show_install_prog] ? "ON" : "OFF");
     log_info("set->Lang         : %s : %i", Language_GetName(set->lang), set->lang);
     log_info("==========================================================");
@@ -1005,7 +1041,7 @@ uint32_t ps4_fw_version(void)
 
 //////////////////////////////////////////////////////
 
-bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer)
+bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer, bool keypad)
 {
     sceSysmoduleLoadModule(ORBIS_SYSMODULE_IME_DIALOG);
 
@@ -1036,6 +1072,8 @@ bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer
     param.title = title;
     param.userId = 0xFE;
     param.type = ORBIS_IME_TYPE_BASIC_LATIN;
+    if (keypad)
+        param.type = ORBIS_IME_TYPE_NUMBER;
     param.enterLabel = ORBIS_IME_ENTER_LABEL_DEFAULT;
 
     sceImeDialogInit(&param, NULL);
@@ -1143,7 +1181,7 @@ bool copy_dir(const char* sourcedir, const char* destdir) {
                     copy_dir(src_path, dst_path);
                 }
                 else if (S_ISREG(info.st_mode)) {
-                    if (!copyFile(std::string(src_path), std::string(dst_path), false))
+                    if (!copyFile(src_path, dst_path, false))
                         return false;
                 }
             }
@@ -1430,6 +1468,9 @@ void relaunch_timer_thread()
 /*====================================  UPDATE SHIT  ===========================================*/
 update_ret check_update_from_url(const char* tid = ITEMZFLOW_TID)
 {
+    if(get->setting_bools[INTERNAL_UPDATE])
+       return IF_NO_UPDATE;
+
     sceStoreApiCheckUpdate = (update_ret(*)(const char*))prx_func_loader(asset_path("../Media/store_api.prx"), "sceStoreApiCheckUpdate");
     if(sceStoreApiCheckUpdate)
     {           
@@ -1631,50 +1672,48 @@ void Stop_Music(){
     retry_mp3_count = current_song.current_file = main_ch = current_song.total_files = 0;
 
 }
-bool do_update(std::string url){
+bool do_update(std::string url) {
 
-    log_debug("[UPDATE] Starting Update...");   
-    log_debug("[UPDATE] Updating...");
+  log_debug("[UPDATE] Starting Update...");
+  log_debug("[UPDATE] Updating...");
 
-    if(!is_connected_app){
-        log_debug("[UPDATE] Daemon Not connected to app, exiting update mode ... ");
-        return false;
-    }
+  if (get->setting_bools[INTERNAL_UPDATE] && !is_connected_app) {
+    log_debug("[UPDATE] Daemon Not connected to app, exiting update mode ... ");
+    return false;
+  }
 
-#if UPDATE_TESTING==1
+  if (get->setting_bools[INTERNAL_UPDATE]) {
     std::string tmp;
     long ret = -1;
     char ipc_msg[100];
 
-    tmp =  fmt::format("{}/update/if_update.pkg", url.c_str());
-    if((ret = dl_from_url(tmp.c_str(), APP_PATH("../if_update.pkg"))) < 0){
-        log_error("[UPDATE] Failed to download if_update.pkg ret: %i", ret);
-        return false;
+    tmp = fmt::format("{}/update/if_update.pkg", url.c_str());
+    if ((ret = dl_from_url(tmp.c_str(), APP_PATH("../if_update.pkg"))) < 0 && if_exists(APP_PATH("../if_update.pkg"))) {
+      log_error("[UPDATE] Failed to download if_update.pkg ret: %i", ret);
+      return false;
     }
 
-    log_debug("[UPDATE] Verified, Sending IPC Command for Update Installing ...");
-    sprintf(&ipc_msg[1], "%i", getpid());
-    log_info("Sending PID: %s", &ipc_msg[1]);
-    int error = IPCSendCommand(INSTALL_IF_UPDATE, (uint8_t*)&ipc_msg[0]);
+    sprintf( & ipc_msg[1], "%i", getpid());
+    log_info("Sending PID: %s", & ipc_msg[1]);
+    int error = IPCSendCommand(INSTALL_IF_UPDATE, (uint8_t * ) & ipc_msg[0]);
     if (error != NO_ERROR) {
-        sceMsgDialogTerminate();
-        log_error("[UPDATE] IPC INSTALL UPDATE ERROR: %i", error);
-        return false;
+      sceMsgDialogTerminate();
+      log_error("[UPDATE] IPC INSTALL UPDATE ERROR: %i", error);
+      return false;
     }
 
     log_debug("[UPDATE] Copied, Removing Temp Files");
     log_debug("[UPDATE] Complete...");
 
     raise(SIGQUIT);
-#else
-#ifdef __ORBIS__
-    if(!Launch_Store_URI()){
-        log_error("[UPDATE] Failed to launch store uri");
-        return false;
+  } 
+  else {
+    if (!Launch_Store_URI()) {
+      log_error("[UPDATE] Failed to launch store uri");
+      return false;
     }
-#endif
-#endif
-    return true;
+  }
+  return true;
 }
 
 void check_for_update_file(){
@@ -1758,6 +1797,20 @@ void notifywithicon(const char* IconURI, const char* MessageFMT, ...)
 	Buffer.TargetId = -1;
 	strcpy(Buffer.Uri, IconURI);
   sceKernelSendNotificationRequest(0, (char*)&Buffer, sizeof(Buffer), 0);
+}
+
+bool get_ip_address(std::string &ip)
+{
+	int ret;
+	SceNetCtlInfo info;
+
+	ret = sceNetCtlGetInfo(14, &info);
+	if (ret < 0)
+		return false;
+
+    ip = info.ip_address;
+    
+	return true;
 }
 
 void msgok(enum MSG_DIALOG level, std::string in)
@@ -2049,6 +2102,13 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
                     msgok(WARNING, getLangSTR(ID_NOT_VAILD));
                     break;
                 }
+                case PROCCESS_STARTER_OP_NOT_SUPPORTED: {
+
+                    if(TITLE_ID == APP_HOME_HOST_TID)
+                       msgok(WARNING, getLangSTR(LNC_TOO_MANY_ROOT_FILES));
+
+                    break;
+                }
 
                 default: {
                     msgok(WARNING, fmt::format("{0:}: {1:#x}", getLangSTR(LAUNCH_ERROR),sys_res));
@@ -2087,6 +2147,7 @@ bool is_sfo(const char* input_file_name) {
 	fclose(file);
 	return true;
 }
+
 
 bool is_fpkg(std::string pkg_path) {
 
@@ -2168,16 +2229,16 @@ void rebuild_db(){
 
         progstart((char *)getLangSTR(REBUILDING_FOR_FPKG).c_str());
         int failures = 0;
-        for (int i = 1; i < all_apps[0].HDD_count - 1; i++)
+        for (int i = 1; i <= all_apps[0].HDD_count; i++)
         {
-            bool is_if = (all_apps[i].id == "ITEM00001");
+            bool is_if = ((all_apps[i].id == "ITEM00001") || (all_apps[i].id == "ITEM99999"));
             if (!all_apps[i].is_fpkg || is_if)
             { // if its not an fpkg or Itemzflow, skip
                 fmt::print("Skipping {}: {}", is_if ? "IF" : "Retail Game", all_apps[i].name);
                 continue;
             }
 
-            if (i >= all_apps[0].HDD_count){
+            if (i > all_apps[0].HDD_count){
                 log_info("Skipping external HDD app: %s ???", all_apps[i].name.c_str());
                 continue;
             }
@@ -2243,66 +2304,4 @@ std::ifstream::pos_type file_size(const char* filename)
     std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
     return in.tellg(); 
 }
-
-
-void refresh_apps_for_cf(Sort_Multi_Sel op, Sort_Category cat )
-{
-    pthread_mutex_lock(&disc_lock);
-    int before = all_apps[0].token_c;
-    log_debug("Reloading Installed Apps before: %i", before);
-    loadmsg(getLangSTR(RELOAD_LIST));
-    // leak not so much
-    // print_Apps_Array(all_apps, before);
-    delete_apps_array(all_apps);
-
-    index_items_from_dir(all_apps, APP_PATH("../"), "/mnt/ext0/user/app", cat);
-    log_info("=== %i", all_apps[0].token_c);
-    //std::vector<item_idx_t*> sort;
-    //print_Apps_Array(all_apps);
-
-    switch (op)
-    {
-    case TID_ALPHA_SORT:
-    {
-        std::sort(all_apps.begin() + 1, all_apps.end(), [](item_t a, item_t b)
-        { 
-            return a.id.size() < b.id.size(); 
-        });
-        break;
-    }
-    case TITLE_ALPHA_SORT:
-    {
-        std::sort(all_apps.begin() + 1, all_apps.end(), [](item_t a, item_t b)
-        { 
-            std::string tmp1 = a.name;
-            std::string tmp2 = b.name;
-
-            std::transform(tmp1.begin(), tmp1.end(), tmp1.begin(), ::tolower);
-            std::transform(tmp2.begin(), tmp2.end(), tmp2.begin(), ::tolower);
-
-            return tmp1.compare(tmp2) < 0;
-       });
-        break;
-    }
-    case NA_SORT:
-    default:
-        break;
-    }
-
-    realloc_app_retries();
-    InitScene_4(1920, 1080);
-    for (int i = 1; i < all_apps[0].token_c + 1; i++)
-    {
-        check_tex_for_reload(i);
-        check_n_load_textures(i);
-    }
-
-    sceMsgDialogTerminate();
-    log_debug("Done reloading # of App: %i, # of Apps added/removed: %i", all_apps[0].token_c, all_apps[0].token_c - before);
-    is_disc_inserted = false;
-    inserted_disc = -999;
-    g_idx = 1;
-    pthread_mutex_unlock(&disc_lock);
-}
-
 

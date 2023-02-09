@@ -27,7 +27,7 @@ namespace pfs {
     char* copy_buffer = NULL;
     int pfs;
 
-    void memcpy_to_file(const char* fname, uint64_t ptr, uint64_t size)
+    void memcpy_to_file(const char* fname, uint64_t ptr, uint64_t size, char* title, const char* tid)
     {
         uint64_t bytes;
         uint64_t ix = 0;
@@ -48,6 +48,10 @@ namespace pfs {
                 pfs_copied += bytes;
                 if (pfs_copied > pfs_size) pfs_copied = pfs_size;
                 pfs_progress = (uint64_t)(((float)pfs_copied / pfs_size) * 100.f);
+                if (strstr(fname, "patch"))
+                    ProgUpdate(pfs_progress, "%s\n\n%s %s\n%s %s\n\n%s\n %s...\n", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME), title, getDumperLangSTR(TITLE_ID), tid, getDumperLangSTR(EXT_PATCH), fname);
+                else
+                    ProgUpdate(pfs_progress, "%s\n\n%s %s\n%s %s\n\n%s\n %s...\n", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME), title, getDumperLangSTR(TITLE_ID), tid, getDumperLangSTR(EXT_GAME_FILES), fname);
 
             }
             log_info("Close(fd): %x", sceKernelClose(fd));
@@ -105,7 +109,7 @@ namespace pfs {
                     if (dry_run)
                         pfs_size += inodes[ent->ino].size;
                     else
-                        memcpy_to_file(fname, (uint64_t)header->blocksz * inodes[ent->ino].db[0], inodes[ent->ino].size);
+                        memcpy_to_file(fname, (uint64_t)header->blocksz * inodes[ent->ino].db[0], inodes[ent->ino].size, title, tid);
 
                     log_info("%s -- prog %i", fname, pfs_progress);
                 }

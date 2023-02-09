@@ -24,7 +24,7 @@
 #endif
 
 #include "fuse_common.h"
-
+#include <orbis/libkernel.h>
 #include <fcntl.h>
 #include <time.h>
 #include <utime.h>
@@ -496,15 +496,6 @@ struct fuse_operations {
 	 */
 	int (*poll) (const char *, struct fuse_file_info *,
 		     struct fuse_pollhandle *ph, unsigned *reventsp);
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/		 
-	void (*mount_done) (int);
 };
 
 /** Extra context that may be needed by some filesystems
@@ -930,19 +921,6 @@ struct fuse_session *fuse_get_session(struct fuse *f);
 #    endif
 #  endif
 #endif
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-/* ----------------------------------------------------------- *
- * For DRFP                                                    *
- * ------------------------------------------------------------*/
-#define DRFP_MNTDONE_RELATIVE (1)
-#define DRFP_MNTDONE_ABSOLUTE (2)
 
 #ifdef __cplusplus
 }

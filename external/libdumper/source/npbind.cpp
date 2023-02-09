@@ -89,20 +89,16 @@ std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: 
   Sha1BlockResult(&context, calculated_digest);
 
 #if 0
-  printf("\[SHA1] Digest: ");
+  log_info("\[SHA1] Digest: ");
 
   for (int i = 0; i < 20; i++)
-      printf("%x", digest[i]);
-
-      printf("\n");
-
-
-      printf("\[SHA1] calculated_digest: ");
+      log_info("%x\n", digest[i]);
+      log_info("[SHA1] calculated_digest: ");
 
       for (int i = 0; i < 20; i++)
-          printf("%x", calculated_digest[i]);
+          log_info("%x", calculated_digest[i]);
 
-      printf("\n");
+      log_info("\n");
 #endif
 
   if (std::memcmp(calculated_digest, digest, sizeof(digest)) != 0) {

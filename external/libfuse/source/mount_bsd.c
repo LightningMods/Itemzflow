@@ -9,7 +9,8 @@
 #include "fuse_i.h"
 #include "fuse_misc.h"
 #include "fuse_opt.h"
-
+#include <sys/param.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/sysctl.h>
@@ -70,33 +71,34 @@ void build_iovec(struct iovec** iov, int* iovlen, const char* name, const void* 
     *iovlen = ++i;
 }
 
+#define	MNT_FORCE	0x0000000000080000ULL  /* force unmount or readonly change */
 
 int mount_fuse(const char* device, const char* mountpoint)
 {
     struct iovec* iov = NULL;
     int iovlen = 0;
-	//char buff[200];
 
-	build_iovec(&iov, &iovlen, "private", "__private", -1);
-    build_iovec(&iov, &iovlen, "allow_other", "", -1);
-    build_iovec(&iov, &iovlen, "subtype=", "dummy", -1);//private
-    build_iovec(&iov, &iovlen, "sync_unmount", "__sync_unmount", -1);
-    build_iovec(&iov, &iovlen, "max_read=", "262144", -1);
-    build_iovec(&iov, &iovlen, "fstype", "fusefs", -1);
+    // fuse mount flags
+	build_iovec(&iov, &iovlen, "private", "", -1);
+	build_iovec(&iov, &iovlen, "__private", "", -1);
+	build_iovec(&iov, &iovlen, "sync_unmount", "", -1);
+	build_iovec(&iov, &iovlen, "__sync_unmount", "", -1);
+	build_iovec(&iov, &iovlen, "max_read=", "262144", -1);
+	build_iovec(&iov, &iovlen, "subtype=", "dummy", -1);
+	build_iovec(&iov, &iovlen, "allow_other", "", -1);
+	build_iovec(&iov, &iovlen, "fstype", "fusefs", -1);
     build_iovec(&iov, &iovlen, "fspath", mountpoint, -1);
     build_iovec(&iov, &iovlen, "from", device, -1);
-	//build_iovec(&iov, &iovlen, "max_read=", "262144", -1);
 
-  
+
 	libfuse_print("##^  [I] Mounting \"%s\" to \"%s\" ", device, mountpoint);
-    int ret = nmount(iov, iovlen, 0);
+    int ret = nmount(iov, iovlen, MNT_FORCE);
     if (ret < 0) {
 		libfuse_print("##^  [E] Failed: %d (errno: %d).", ret, errno);
         return ret;
     }
     else 
         libfuse_print("##^  [I] Success.");
-    
 
     return 0;
 }
@@ -204,105 +206,58 @@ static int fuse_mount_opt_proc(void *data, const char *arg, int key,
 	}
 	return 1;
 }
-#if 0
-/*
-Modified by F.KUMAGAE,  01/23/2015
 
----------------
-Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-void fuse_unmount_compat22(const char *mountpoint)
-{
-	char dev[128];
-	char *ssc, *umount_cmd;
-	FILE *sf;
-	int rv;
-	char seekscript[] =
-		/* error message is annoying in help output */
-		"exec 2>/dev/null; "
-		"/usr/bin/fstat " FUSE_DEV_TRUNK "* | "
-		"/usr/bin/awk 'BEGIN{ getline; if (! ($3 == \"PID\" && $10 == \"NAME\")) exit 1; }; "
-		"              { if ($3 == %d) print $10; }' | "
-		"/usr/bin/sort | "
-		"/usr/bin/uniq | "
-		"/usr/bin/awk '{ i += 1; if (i > 1){ exit 1; }; printf; }; END{ if (i == 0) exit 1; }'";
-
-	(void) mountpoint;
-
-	/*
-	 * If we don't know the fd, we have to resort to the scripted
-	 * solution -- iterating over the fd-s is unpractical, as we
-	 * don't know how many of open files we have. (This could be
-	 * looked up in procfs -- however, that's optional on FBSD; or
-	 * read out from the kmem -- however, that's bound to
-	 * privileges (in fact, that's what happens when we call the
-	 * setgid kmem fstat(1) utility).
-	 */
-	if (asprintf(&ssc, seekscript, getpid()) == -1)
-		return;
-
-	errno = 0;
-	sf = popen(ssc, "r");
-	free(ssc);
-	if (! sf)
-		return;
-
-	fgets(dev, sizeof(dev), sf);
-	rv = pclose(sf);
-	if (rv)
-		return;
-
-	if (asprintf(&umount_cmd, "/sbin/umount %s", dev) == -1)
-		return;
-	system(umount_cmd);
-	free(umount_cmd);
-}
-#endif
-static void do_unmount(char *dev, int fd)
-{
-
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-	return;
-	
-}
-
-/* 
-Modified by T.MOMOZONO,  04/27/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 static int fuse_mount_core(const char *mountpoint, const char *opts, const struct fuse_operations *op)
 {
-	int fd = open("/dev/fuse", O_RDWR);
-	libfuse_print("open /dev/fuse fd = %d", fd);
-	if (fd == -1) 
+	int fd = -1;
+    int dev_trunk = open("/dev/fuse", O_RDWR);
+	if(dev_trunk == -1){
 		libfuse_print("fuse: failed to open /dev/fuse: %s", strerror(errno));
+		return dev_trunk;
+	}
+	else
+	  libfuse_print("mount_fuse fd: %d, mountpoint: %s", dev_trunk, mountpoint);
 
-	mount_fuse("/dev/fuse0", mountpoint);
+	close(dev_trunk), dev_trunk = -1;
+
+
+	if(strstr(mountpoint, "/host") != NULL) {
+	    fd = open("/dev/fuse0", O_RDWR);
+	    libfuse_print("Devpath: /dev/fuse0 fd: %d, mountpoint: %s", fd, mountpoint);
+	    if (fd == -1) {
+		   libfuse_print("fuse: failed to open /dev/fuse0: %s", strerror(errno));
+		   return fd;
+	    }
+
+	   	if(mount_fuse("/dev/fuse0", mountpoint)){
+			libfuse_print("fuse: failed to mount /dev/fuse0: %s", strerror(errno));
+			close(fd);
+			return -1;
+		}
+	}
+	else if(strstr(mountpoint, "/hostapp") != NULL) {
+	    fd = open("/dev/fuse1", O_RDWR);
+	    libfuse_print("Devpath: /dev/fuse1 fd: %d, mountpoint: %s", fd, mountpoint);
+	    if (fd == -1) {
+		   libfuse_print("fuse: failed to open /dev/fuse1: %s", strerror(errno));
+		   return fd;
+	    }
+
+	   	if(mount_fuse("/dev/fuse1", mountpoint)){
+			libfuse_print("fuse: failed to mount /dev/fuse1: %s", strerror(errno));
+			close(fd);
+			return -1;
+		}
+	}
+	else{
+		libfuse_print("[FATAL ERROR] NO mount rules for mp: %s", mountpoint);
+		return -1;
+	}
 
 	return fd;
 }
 
-/* 
-Modified by Y.OGATA,  03/16/2012
 
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 int fuse_kern_mount(const char *mountpoint, struct fuse_args *args, const struct fuse_operations *op)
 {
 	struct mount_opts mo;
@@ -322,16 +277,9 @@ int fuse_kern_mount(const char *mountpoint, struct fuse_args *args, const struct
 		return -1;
 	}
 
-	if (mo.allow_other && mo.allow_root) {
-		libfuse_print("fuse: 'allow_other' and 'allow_root' options are mutually exclusive");
-		goto out;
-	}
-	if (mo.ishelp)
-		return 0;
-
 	res = fuse_mount_core(mountpoint, mo.kernel_opts, op);
 	libfuse_print("fuse_mount_core res = %d", res);
-out:
+
 	free(mo.kernel_opts);
 	return res;
 }

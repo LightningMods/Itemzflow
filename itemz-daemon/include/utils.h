@@ -38,11 +38,17 @@ enum IPC_Errors
 {
     INVALID = -1,
     NO_ERROR = 0,
-    OPERATION_FAILED = 1
+    OPERATION_FAILED = 1,
+    INVALID_ARGUMENT = 2,
+    FUSE_IP_ALREADY_SET = 3,
+    FUSE_IP_NOT_SET = 4,
+    FUSE_FW_NOT_SUPPORTED = 5,
 };
 
 enum cmd
 {
+    
+    MACGUFFIN_CMD = 69,
     SHUTDOWN_DAEMON = 0,
     CONNECTION_TEST = 1,
     ENABLE_HOME_REDIRECT = 2,
@@ -52,7 +58,11 @@ enum cmd
     CRITICAL_SUSPEND = 6,
     INSTALL_IF_UPDATE = 7,
     RESTART_FTP_SERVICE = 8,
-    DEAMON_UPDATE = 100
+    FUSE_SET_SESSION_IP = 9,
+    FUSE_SET_DEBUG_FLAG = 10,
+    FUSE_START_W_PATH = 11,
+    RESTART_FUSE_FS = 12,
+    DEAMON_UPDATE = 100,
 };
 
 
@@ -66,6 +76,7 @@ struct clientArgs {
     char* ip;
     int socket;
     int cl_nmb;
+
 };
 
 enum Flag
@@ -142,7 +153,7 @@ bool full_init();
 bool isRestMode();
 bool IsOn();
 void notify(char* message);
-
+void save_fuse_ip(char* ip);
 extern int DaemonSocket;
 
 #define networkSendMessage(socket, format, ...)\
@@ -173,6 +184,7 @@ int scePadSetProcessPrivilege(int privilege);  // 0 = no privilege, 1 = privileg
 int sceLncUtilInitialize();
 bool if_exists(const char* path);
 int sceSystemServiceRegisterDaemon();
+void* prx_func_loader(const char* prx_path, const char* symbol);
 void  loadModulesVanilla();
 int backtrace(void** buffer, int size);
 int pthread_getthreadid_np();
@@ -180,6 +192,17 @@ int get_game_time_played(const char* tid);
 time_t get_game_start_date(const char* tid);
 void DumpHex(const void* data, size_t size);
 uint32_t pkginstall(const char *path, bool is_if_update);
+struct fuse_actions {
+    int argc;
+    char argv[0x30];
+    char path[0x60];
+    char ip[0x30];
+    bool is_debug_mode;
+};
+extern bool reboot_daemon;
+int initialize_userland_fuse(const char* mp);
+extern void *fuse_session_ip;
+uint8_t set_fuse_session_ip(struct clientArgs* client, uint8_t* in, uint32_t* length);
 
 #define SWAP32(x) \
 	((uint32_t)( \
@@ -327,5 +350,7 @@ int sceBgftServiceTerm(void);
 bool copy_dir(const char* sourcedir,const char* destdir);
 bool rmtree(const char path[]);
 bool copyRegFile(const char* source, const char* dest);
-void* initialize_userland_fuse();
+int fuse_nfs_main(struct fuse_actions args);
 long CalcAppsize(char *path);
+uint32_t ps4_fw_version(void);
+extern bool fuse_debug_flag;

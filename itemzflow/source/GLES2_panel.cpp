@@ -25,6 +25,7 @@
 extern char selected_text[64];
 extern vec2 resolution;
 extern int v_curr;
+extern GLuint bg_tex;
 /* common text */
 
 static vertex_buffer_t *t_vbo = NULL; // for sysinfo
@@ -36,21 +37,95 @@ double dfp_hdd  = -1.,
        dfp_ext  = -1.,
        dfp_fmem = -1.;
 
-static bool refresh_clk = true;
+static std::atomic_bool refresh_clk = true;
 /* upper right sytem_info, updates
    internally each 'clk.z' seconds */
 #define SHOW_FMEM 0
-void GLES2_Draw_sysinfo(void)
+
+void switchTextPositions(vec2 &pen, vec2 origin) {
+    vec4 c = col * .75f;
+    uint32_t numb = 70;
+    size_t fmem = 1000000;
+    std::string tmp;
+
+    // Define the 4 screen corners for 1920x1080 screen size
+        vec2 corners[4] = {
+        { 26, 150 },
+        { 1400, 150 },
+        { 26, 990 },
+        { 1400, 990 }
+    };
+
+    // Get the current time
+    time_t currentTime = time(0);
+    // Calculate the number of 5 minute intervals that have passed since the program started
+    int intervals = currentTime / (5 * 60);
+    // Use the remainder of the above calculation to determine the current corner
+    int currentCorner = intervals % 4;
+
+    // Set the pen position to the current corner
+    pen = corners[currentCorner];
+    log_debug("Current corner: %d", currentCorner);
+
+    // Add text to the current corner
+    tmp = fmt::format("{0:} {1:x}, {2:d}°C, {3:x}", getLangSTR(SYS_VER), ps4_fw_version(), numb, fmem);
+    // we need to know Text_Length_in_px in advance, so we call this:
+    texture_font_load_glyphs( main_font, tmp.c_str() ); 
+    // we know 'tl' now, right align
+    pen.y -= 32;
+    pen.x = corners[currentCorner].x;
+    // fill the vbo
+    add_text( t_vbo, main_font, tmp, &c, &pen);
+    tmp = fmt::format("{0:}: {1:}", getLangSTR(ITEMZ_VER), completeVersion);
+    // we need to know Text_Length_in_px in advance, so we call this:
+    texture_font_load_glyphs( main_font, tmp.c_str() ); 
+    // we know 'tl' now, right align
+    pen.y -= 32;
+    pen.x = corners[currentCorner].x;
+    // fill the vbo
+    add_text( t_vbo, main_font, tmp, &c, &pen);
+    pen.y -= 32;
+    pen.x = corners[currentCorner].x;
+    texture_font_load_glyphs(sub_font, get->setting_strings[THEME_NAME].c_str());
+    if(currentCorner == 3 || currentCorner == 1){
+        int detail_size = get->setting_strings[THEME_NAME].size() + get->setting_strings[THEME_AUTHOR].size() + get->setting_strings[THEME_VERSION].size();
+        if(detail_size > 35)
+           pen.x -= tl;
+    }
+    add_text(t_vbo, sub_font, get->setting_strings[THEME_NAME], &c, &pen);
+    texture_font_load_glyphs(sub_font, get->setting_strings[THEME_AUTHOR].c_str());
+    pen.x += 12;
+    add_text(t_vbo, sub_font, get->setting_strings[THEME_AUTHOR], &c, &pen);
+    texture_font_load_glyphs(sub_font, get->setting_strings[THEME_VERSION].c_str());
+    pen.x += 12;
+    add_text(t_vbo, sub_font, get->setting_strings[THEME_VERSION], &c, &pen);
+    pen.y -= 40;
+    pen.x = corners[currentCorner].x;
+
+}
+
+void GLES2_Draw_sysinfo(bool is_idle)
 {  
     uint32_t numb = 70;
     size_t fmem = 1000000;
     std::string usb = fmt::format("/mnt/usb{}/", usbpath());
     std::string tmp;
+    if(is_idle){
+        /* background image, or pixelshader */
+       if (bg_tex == GL_NULL && !get->setting_bools[has_image])
+        pixelshader_render(2, NULL, NULL); // use PS_symbols shader
+       else{ /* bg image */
+         vec4 r = (vec4){-1., -1., 1., 1.};
+         // see if its even loaded
+         if (bg_tex > GL_NULL)
+            on_GLES2_Render_icon(USE_COLOR, bg_tex, 2, &r, NULL);
+       }
+    }
     // update time
     clk.x += u_t - clk.y;
     clk.y  = u_t;
     // time limit passed!
-    if(clk.x / clk.z > 1. || refresh_clk) // by time or requested
+    if(clk.x / clk.z > 1. || refresh_clk.load()) // by time or requested
     {   // destroy VBO
         if(t_vbo) vertex_buffer_delete(t_vbo), t_vbo = NULL;
         // reset clock
@@ -66,6 +141,28 @@ void GLES2_Draw_sysinfo(void)
         // add border, in px
               origin -= border;
               pen     = origin;
+        vec4 c = col * .75f;
+
+
+        if (is_idle){
+          switchTextPositions(pen, origin);
+#if defined (__ORBIS__)
+        std::string ip;
+        if(!get_ip_address(ip)){
+            texture_font_load_glyphs( sub_font, "0.0.0.0");
+            add_text(t_vbo, sub_font, "0.0.0.0", &col, &pen);
+        }
+        else{
+            texture_font_load_glyphs( sub_font, ip.c_str());
+            add_text(t_vbo, sub_font, ip, &col, &pen);
+        }
+#else
+        texture_font_load_glyphs( sub_font, "0.0.0.0");
+        add_text(t_vbo, sub_font, "0.0.0.0", &col, &pen);
+#endif
+        refresh_atlas();
+        return;
+        }
         /* get systime */
         time_t     t  = time(NULL);
         struct tm *tm = localtime(&t);
@@ -80,7 +177,7 @@ void GLES2_Draw_sysinfo(void)
         // fill the vbo
         add_text( t_vbo, sub_font, tmp, &col, &pen);
         //we dont want all the text on FS view
-        if (v_curr == FILE_BROWSER){
+        if (!is_idle && v_curr == FILE_BROWSER){
             if (t_vbo)
                 ftgl_render_vbo(t_vbo, NULL);
             return;
@@ -99,7 +196,6 @@ void GLES2_Draw_sysinfo(void)
         // we know 'tl' now, right align
         pen.x  = origin.x - tl,
         pen.y -= 32;
-        vec4 c = col * .75f;
         // fill the vbo
         add_text( t_vbo, main_font, tmp, &c, &pen);
 
@@ -111,10 +207,8 @@ void GLES2_Draw_sysinfo(void)
         pen.y -= 32;
         // fill the vbo
         add_text( t_vbo, main_font, tmp, &c, &pen);
-        // eventually, skip dfp on some view...
-
-        // eventually, skip dfp on some view...
-        if(v_curr == ITEMzFLOW)
+        // draw theme info below
+        if (v_curr == ITEMzFLOW)
         {   
             /* text for disk_free stats */
             pen = (vec2){ 26, 100 };
@@ -134,6 +228,7 @@ void GLES2_Draw_sysinfo(void)
                 homedir = getpwuid(getuid())->pw_dir;
             }
             dfp_ext = df(homedir, tmp);
+            pen.y += 32;
 #endif
             // fill the vbo
             add_text(t_vbo, sub_font, getLangSTR(STORAGE), &col, &pen);
@@ -145,7 +240,7 @@ void GLES2_Draw_sysinfo(void)
             if (usbpath() != -1)
 #else
 //log_info("%s", tmp.c_str());
-            if (if_exists(tmp.c_str()))
+            if (if_exists(homedir))
 #endif
                 {
                     add_text(t_vbo, main_font, tmp, &c, &pen);
@@ -176,7 +271,7 @@ void GLES2_Draw_sysinfo(void)
         }
     }
     
-if(v_curr == ITEMzFLOW){
+if(!is_idle && v_curr == ITEMzFLOW){
 #if SHOW_FMEM==1
     /* FMEM: draw filling color bar, by percentage */
     vec4 r = (vec4) { -.975, -.950,   -.505, -.955 };

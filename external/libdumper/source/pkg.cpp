@@ -166,16 +166,13 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
     return false;
   }
 
-  
 
   // Extract sc0 entries
   for (auto &&entry : entries) {
     std::string entry_name = get_entry_name_by_type(__builtin_bswap32(entry.id));
-    if (!entry_name.empty()) {
+    if (entry_name.empty()){//is_PKG_entry_needed(entry_name)) {
       std::filesystem::path temp_output_path(output_path);
       temp_output_path /= entry_name;
-
-      printf("Step %s\n", temp_output_path.string().c_str());
 
       pkg_input.seekg(__builtin_bswap32(entry.offset), pkg_input.beg);
       char* buf = (char*)malloc(__builtin_bswap32(entry.size));
@@ -189,7 +186,7 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
           }
       }
       else {
-          printf("buf null\n");
+          log_error("buf null\n");
           return false;
       }
 
@@ -219,7 +216,7 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
       }
       else {
 
-          printf("Write to file failed\n");
+          log_error("Write to file failed\n");
           pkg_input.close();
           return false;
       }
@@ -253,7 +250,7 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
 
 
 
-  printf("UNPKG ENDED %i\n", __LINE__);
+  log_error("UNPKG ENDED %i\n", __LINE__);
 
   return true;
 }

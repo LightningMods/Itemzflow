@@ -198,6 +198,11 @@ std::string uninstall_get_str(Uninstall_Multi_Sel num) {
 
 std::string save_game_get_str(SAVE_Multi_Sel num) {
 
+    if(gm_save.numb_of_saves > gm_save.ui_requested_save)
+       gm_save.ui_requested_save++;
+    else
+        gm_save.ui_requested_save = 0;
+        
     switch (num) {
     case BACKUP_GAME_SAVE:
         return getLangSTR(BACKUP_SAVE);
@@ -316,7 +321,7 @@ std::string rebuild_db_get_str(Rebuild_db_Multi_Sel num)
 //FPKG=FPKGs
 //NONE=None
 //NO_TRAINERS=No Trainers Found
-
+//
 std::string trainer_get_str(int num)
 {
 #if defined(__ORBIS__)
@@ -470,8 +475,8 @@ static void layout_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
                     }
                     case Game_Save_opt:{
 #if defined(__ORBIS__)
-      if(!gm_save.is_loaded){
-        if(!(gm_save.is_loaded  = GameSave_Info(&gm_save, 0))){ 
+      if(!gm_save.is_loaded || gm_save.ui_requested_save != gm_save.ui_current_save){
+        if(!(gm_save.is_loaded  = GameSave_Info(&gm_save, (gm_save.ui_requested_save == -1) ? 0 : gm_save.ui_requested_save))){ 
                log_error("Fetching Save Info failed");
                tmp =  asset_path("no_save.png");
                gm_save.numb_of_saves = 0;
@@ -487,6 +492,7 @@ static void layout_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
            glDeleteTextures(1, &ic), ic = GL_NULL;
         } // load icon
         ic = load_png_asset_into_texture(gm_save.icon_path.c_str());
+        gm_save.ui_current_save = gm_save.ui_requested_save;
         fmt::print("SaveData Icon: {0:} && gm_save.is_loaded: {1:}", gm_save.icon_path, gm_save.is_loaded);
       }
 #else
@@ -519,7 +525,11 @@ static void layout_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
                         tmp = fmt::format("{} | {} Blocks", calculateSize(gm_save.size * 1000), gm_save.blocks);
                         add_text(l->vbo, main_font, tmp, &color, &pen);
                         pen.y = 570., pen.x = 790.;
-                        add_text(l->vbo, main_font, gm_save.detail, &color, &pen);
+                        add_text(l->vbo, main_font, fmt::format("{0:.45}", gm_save.detail), &color, &pen);
+                        pen.y = 595., pen.x = 1040.;
+                        add_text(l->vbo, main_font, fmt::format("{0:.45}", gm_save.main_title), &color, &pen);
+                        pen.y = 500., pen.x = 1265.;
+                        add_text(l->vbo, main_font, fmt::format("{}/{}", gm_save.ui_requested_save, gm_save.numb_of_saves), &color, &pen);
 
                         tmp = fmt::format("< {0:.20} >", save_game_get_str((SAVE_Multi_Sel)li->multi_sel.pos.y));
                         break;
@@ -816,8 +826,9 @@ static void layout_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
         case COVER_MESSAGE_OPTION:
             get->setting_bools[cover_message] ? tmp = "ON" : tmp = "OFF";
             break;
-        case REFLECTION_OPTION:
-            use_reflection ? tmp = "ON" : tmp = "OFF";
+        case FUSE_IP_OPTION:
+           // use_reflection ? tmp = "ON" : tmp = "OFF";
+            tmp = get->setting_strings[FUSE_PC_NFS_IP];
             break;
         case DOWNLOAD_COVERS_OPTION:
             tmp = getLangSTR(X_DL_COVER);
@@ -917,6 +928,9 @@ static void layout_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
                 case POWER_CONTROL_OPTION:
                     print_option_info(l, pen, getLangSTR(POWER_CONTROL_INFO), "", true);
                     break;
+                case FUSE_IP_OPTION:
+                     print_option_info(l, pen, getLangSTR(FUSE_OPTION_DESC), getLangSTR(FUSE_OPTION_DESC_1), true);
+                     break;
                 default:
                     break;
                 }
@@ -925,7 +939,105 @@ static void layout_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
     else
         add_text(l->vbo, sub_font, tmp, &col, pen);
 }
+/* default way to deal with text, for layout_t */
+static void hostapp_vapp_compose_text(layout_t* l, int idx, vec2* pen, bool save_text)
+{
+#if 0
+    log_info("%s %p, %d", __FUNCTION__, l, save_text);
+#endif
 
+    std::string tmp = "";
+
+    vec4 c = col * .75f;
+    // default indexing, item_t* AOS
+    item_t* li = &l->item_d[idx];
+
+    if (l != &ls_p) return;
+
+        vec2 bk = *pen;
+        bk.x += 10,
+            bk.y += 50;
+        vec2 sub_ops = { bk.x, bk.y };
+
+        add_text(l->vbo, sub_font, li->name, &col, &bk);
+
+        /* special option */
+        vec2 tp = *pen;
+        switch (idx)
+        {
+        case LAUNCH_HA:
+        if(app_status != RESUMABLE) break;
+        if (!li->multi_sel.is_active){
+            li->multi_sel.pos = (ivec4){0, 0, 0, 2};
+            li->multi_sel.is_active = true;
+            log_info("$$$$$  multi_sel is active");
+        }
+
+            //set active for all above too
+            //li->multi_sel.is_active = true;
+            if (li->multi_sel.is_active && li->multi_sel.pos.x == FIRST_MULTI_LINE)
+            {
+                // show '< X >' around Option
+                switch (idx){
+                    case LAUNCH_HA:{
+                        tmp = fmt::format("< {0:.20} >", control_app_get_str((GameStatus)(li->multi_sel.pos.y+1)));
+                        break;
+                    }
+                }
+                // compute rectangle position and size in px
+                vec4 r = get_rect_from_index(idx, l, NULL);
+                // start at panel position, move to center
+                tp = *pen;
+                tp.x = (l->bound_box.x + r.z / 2.) + 300.;
+                // we need to know Text_Length_in_px in advance, so we call this:
+                texture_font_load_glyphs(main_font, tmp.c_str());
+                tp.x -= tl / 2.;
+                *pen = tp;
+            }
+            else
+                tmp = getLangSTR(SELECT_INTERACT);
+
+            break;
+        }
+
+            if (tmp.size() > 3)
+            {
+                sub_ops.y -= 40;
+                add_text(l->vbo, main_font, tmp, &c, &sub_ops);
+            }
+
+            if (idx == 0 || (li->multi_sel.is_active && li->multi_sel.pos.x == FIRST_MULTI_LINE))
+            {
+                // print options info
+                switch (l->curr_item)
+                {//RESTORE_NOTICE
+                case REFRESH_HA:
+                    print_option_info(l, pen, getLangSTR(REFRESH_HOSTAPP_DESC), "", false);
+                    break;
+                case LAUNCH_HA:
+                    if (li->multi_sel.is_active && li->multi_sel.pos.x == FIRST_MULTI_LINE)
+                    {
+                        // show '< X >' around Option
+                        if (app_status == RESUMABLE)
+                            print_option_info(l, pen, getLangSTR(GAME_CONTROL_INFO), getLangSTR(SUSPEND_IF), false);
+                        else
+                            print_option_info(l, pen, getLangSTR(CLOSE_OPEN_APP_INFO), "", false);
+                    }
+                    else if (app_status == NO_APP_OPENED)
+                        print_option_info(l, pen, getLangSTR(LAUNCH_INFO), getLangSTR(SUSPEND_IF), false);
+                    else if (app_status == OTHER_APP_OPEN)
+                        print_option_info(l, pen, getLangSTR(CLOSE_OPEN_APP_INFO), "", false);
+                    else if (app_status == RESUMABLE)
+                        print_option_info(l, pen, getLangSTR(GAME_CONTROL_INFO), getLangSTR(SUSPEND_IF), false);
+
+                     break;
+                default:
+                    break;
+                }
+            }
+            return;
+    
+}
 
 /*
     last review:
@@ -1042,6 +1154,14 @@ if (l->vbo_s < CLOSED && (l != &fm_lp && l != &fm_rp))
     // texts: check for its vbo
     if (l->vbo && l->vbo_s < CLOSED)
     { /* draw over item: text pos, in px */
+       if(l == &ls_p && !is_vapp(title_id))
+        layout_compose_text(l, loop_idx, &tp, save_text);
+       else if (l == &ls_p && is_vapp(title_id)){
+         if(title_id == APP_HOME_HOST_TID){
+            hostapp_vapp_compose_text(l, loop_idx, &tp, save_text);
+         }
+       }
+       else
         layout_compose_text(l, loop_idx, &tp, save_text);
     }
 } /// EOFor each item
@@ -1123,7 +1243,7 @@ if (l->f_rect && (l != &fm_lp && l != &fm_rp))
                 // build filepath
                 std::string out;
                 /* draw over item */
-                out = fmt::format("{0:.30}{1:}", li->id, li->id.size() > 30 ? "..." : "");
+                out = fmt::format("{0:.20}{1:}", li->id, li->id.size() > 20 ? "..." : "");
 
 
                 // update pen
@@ -1261,8 +1381,16 @@ void GLES2_render_list(enum view_t v)
         l = &ls_p;
         if (!l->is_active || old_status != app_status)
         {
-            if(!l->is_active){
+            log_info("init layout for %s", title_id.c_str());
+            if(!is_vapp((title_id))){
                 GLES2_layout_init(10, l);
+                l->bound_box = (vec4){ 120, resolution.y - 200,  620, 600 };
+                l->fieldsize = (ivec2){ 2, 5 };
+            }
+            else if(title_id == APP_HOME_HOST_TID){
+                GLES2_layout_init(2, l);
+                //l->bound_box = (vec4){ 120, resolution.y - 200,  620, 100 };
+                //l->fieldsize = (ivec2){ 2, 1 };
                 l->bound_box = (vec4){ 120, resolution.y - 200,  620, 600 };
                 l->fieldsize = (ivec2){ 2, 5 };
             }
@@ -1280,7 +1408,6 @@ void GLES2_render_list(enum view_t v)
                 gm_p_text.at(0) = getLangSTR(CLOSE_GAME);
                 break;
             }
-
             layout_fill_item_from_list(l, gm_p_text);
             active_p = l;
             log_info("app_status: %i | old_status: %i", app_status, old_status);
@@ -1540,3 +1667,4 @@ void pixelshader_fini(void)
     if (shader)    glDeleteProgram(shader), shader = 0;
     if (mz_shader) glDeleteProgram(mz_shader), mz_shader = 0;
 }
+

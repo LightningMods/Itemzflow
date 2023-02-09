@@ -17,6 +17,7 @@
 #include "fuse_common_compat.h"
 #include "fuse_compat.h"
 #include "fuse_kernel.h"
+#include <orbis/libkernel.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -33,14 +34,7 @@
 #include <sys/param.h>
 #include <sys/uio.h>
 #include <sys/time.h>
-/* 
-Modified by F.KUMAGAE,  05/15/2014
 
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 
 #define FUSE_DEFAULT_INTR_SIGNAL SIGUSR1
 
@@ -82,16 +76,7 @@ struct fuse_fs {
 };
 
 struct fusemod_so {
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-//	void *handle;
-    void* handle;
+    SceKernelModule handle;
 	int ctr;
 };
 
@@ -190,14 +175,6 @@ static int fuse_load_so_name(const char *soname)
 	}
 
 	fuse_current_so = so;
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	so->handle = sceKernelLoadStartModule(soname, 0, NULL, 0, NULL, NULL);
 	fuse_current_so = NULL;
 	if (so->handle < 0) {
@@ -213,7 +190,7 @@ Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved.
 
 err:
 	if (so->handle > 0)
-		sceKernelStopUnloadModule(so->handle, 0, NULL, 0, NULL, NULL);
+		sceKernelStopUnloadModule((SceKernelModule)so->handle, 0, NULL, 0, NULL, NULL);
 	free(so);
 	return -1;
 }
@@ -221,14 +198,6 @@ err:
 static int fuse_load_so_module(const char *module)
 {
 	int res;
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	size_t soname_size = strlen(module) + 64;
 	char *soname = malloc(soname_size);
 	if (!soname) {
@@ -285,15 +254,7 @@ static void fuse_put_module(struct fuse_module *m)
 				else
 					mp = &(*mp)->next;
 			}
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-			sceKernelStopUnloadModule(so->handle, 0, NULL, 0, NULL, NULL);
+			sceKernelStopUnloadModule((SceKernelModule)so->handle, 0, NULL, 0, NULL, NULL);
 			free(so);
 		}
 	}
@@ -459,36 +420,27 @@ static struct node *find_node(struct fuse *f, fuse_ino_t parent,
 	struct node *node = NULL;
 
 	pthread_mutex_lock(&f->lock);
-/* 
-Modified by Y.OGATA,  03/16/2012
 
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-/*
 	if (!name)
 		node = get_node(f, parent);
 	else
-*/
-	if (S_ISDIR(mode)) {
 		node = lookup_node(f, parent, name);
-	}
+
 	if (node == NULL) {
 		node = (struct node *) calloc(1, sizeof(struct node));
 		if (node == NULL)
 			goto out_err;
-
-		node->refctr = 0;
+        if (f->conf.noforget)
+			 node->nlookup = 1;
+		node->refctr = 1;
 		node->nodeid = next_id(f);
 		node->generation = f->generation;
 		node->open_count = 0;
 		node->is_hidden = 0;
 		node->treelock = 0;
 		node->ticket = 0;
-		if (f->conf.noforget)
-			inc_nlookup(node);
+		//if (f->conf.noforget)
+		//	inc_nlookup(node);
 		if (hash_name(f, node, parent, name) == -1) {
 			free(node);
 			node = NULL;
@@ -496,7 +448,8 @@ Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved.
 		}
 		hash_id(f, node);
 	}
-	inc_nlookup(node);
+	//inc_nlookup(node);
+	node->nlookup++;
 out_err:
 	pthread_mutex_unlock(&f->lock);
 	return node;
@@ -556,14 +509,7 @@ static void unlock_path(struct fuse *f, fuse_ino_t nodeid, struct node *wnode,
 	}
 }
 
-/* 
-Modified by F.KUMAGAE,  05/15/2014
 
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 static void release_tickets(struct fuse *f, fuse_ino_t nodeid,
 			    struct node *wnode, int ticket)
 {
@@ -595,14 +541,6 @@ static int try_get_path(struct fuse *f, fuse_ino_t nodeid, const char *name,
 	int err;
 
 	*path = NULL;
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	err = -ENOMEM;
 	buf = malloc(bufsize);
 	if (buf == NULL)
@@ -812,22 +750,6 @@ static int try_get_path2(struct fuse *f, fuse_ino_t nodeid1, const char *name1,
 	err = try_get_path(f, nodeid1, name1, path1, wnode1, ticket);
 	if (!err) {
 		err = try_get_path(f, nodeid2, name2, path2, wnode2, ticket);
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-/* 
-Modified by Y.ITO,  02/16/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 		if (err) {
 			struct node *wn1 = wnode1 ? *wnode1 : NULL;
 
@@ -929,6 +851,7 @@ static void forget_node(struct fuse *f, fuse_ino_t nodeid, uint64_t nlookup)
 	assert(node->nlookup >= nlookup);
 	node->nlookup -= nlookup;
 	if (!node->nlookup) {
+		//unhash_name(f, node);
 		unref_node(f, node);
 	}
 	pthread_mutex_unlock(&f->lock);
@@ -1075,7 +998,7 @@ static inline void fuse_prepare_interrupt(struct fuse *f, fuse_req_t req,
 		fuse_do_prepare_interrupt(req, d);
 }
 
-#ifndef __FreeBSD__
+#if 0
 
 static int fuse_compat_open(struct fuse_fs *fs, const char *path,
 			    struct fuse_file_info *fi)
@@ -1175,6 +1098,7 @@ static int fuse_compat_statfs(struct fuse_fs *fs, const char *path,
 static inline int fuse_compat_open(struct fuse_fs *fs, char *path,
 				   struct fuse_file_info *fi)
 {
+	//libfuse_print("fuse_compat_open: %s", path);
 	return fs->op.open(path, fi);
 }
 
@@ -1193,7 +1117,7 @@ static inline int fuse_compat_opendir(struct fuse_fs *fs, const char *path,
 static inline int fuse_compat_statfs(struct fuse_fs *fs, const char *path,
 				     struct statvfs *buf)
 {
-	return fs->op.statfs(fs->compat == 25 ? "/" : path, buf);
+	return fs->op.statfs(path, buf);
 }
 
 #endif /* __FreeBSD__ */
@@ -1202,7 +1126,7 @@ int fuse_fs_getattr(struct fuse_fs *fs, const char *path, struct stat *buf)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.getattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("getattr %s", path);
 
 		return fs->op.getattr(path, buf);
@@ -1216,13 +1140,13 @@ int fuse_fs_fgetattr(struct fuse_fs *fs, const char *path, struct stat *buf,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.fgetattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("fgetattr[%llu] %s",
 				(unsigned long long) fi->fh, path);
 
 		return fs->op.fgetattr(path, buf, fi);
 	} else if (path && fs->op.getattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("getattr %s", path);
 
 		return fs->op.getattr(path, buf);
@@ -1236,7 +1160,7 @@ int fuse_fs_rename(struct fuse_fs *fs, const char *oldpath,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.rename) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("rename %s %s", oldpath, newpath);
 
 		return fs->op.rename(oldpath, newpath);
@@ -1249,7 +1173,7 @@ int fuse_fs_unlink(struct fuse_fs *fs, const char *path)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.unlink) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("unlink %s", path);
 
 		return fs->op.unlink(path);
@@ -1262,7 +1186,7 @@ int fuse_fs_rmdir(struct fuse_fs *fs, const char *path)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.rmdir) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("rmdir %s", path);
 
 		return fs->op.rmdir(path);
@@ -1275,7 +1199,7 @@ int fuse_fs_symlink(struct fuse_fs *fs, const char *linkname, const char *path)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.symlink) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("symlink %s %s", linkname, path);
 
 		return fs->op.symlink(linkname, path);
@@ -1288,7 +1212,7 @@ int fuse_fs_link(struct fuse_fs *fs, const char *oldpath, const char *newpath)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.link) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("link %s %s", oldpath, newpath);
 
 		return fs->op.link(oldpath, newpath);
@@ -1302,7 +1226,7 @@ int fuse_fs_release(struct fuse_fs *fs,	 const char *path,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.release) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("release%s[%llu] flags: 0x%x",
 				fi->flush ? "+flush" : "",
 				(unsigned long long) fi->fh, fi->flags);
@@ -1320,13 +1244,13 @@ int fuse_fs_opendir(struct fuse_fs *fs, const char *path,
 	if (fs->op.opendir) {
 		int err;
 
-		if (1)
+		if (fs->debug) 
 			libfuse_print("opendir flags: 0x%x %s", fi->flags,
 				path);
 
 		err = fuse_compat_opendir(fs, path, fi);
 
-		if (1 && !err)
+		if (fs->debug && !err)
 			libfuse_print("   opendir[%lli] flags: 0x%x %s",
 				(unsigned long long) fi->fh, fi->flags, path);
 
@@ -1339,29 +1263,21 @@ int fuse_fs_opendir(struct fuse_fs *fs, const char *path,
 int fuse_fs_open(struct fuse_fs *fs, const char *path,
 		 struct fuse_file_info *fi)
 {
+	if (fs->debug) 
+	  libfuse_print("open flags: 0x%x %s", fi->flags, path);
+
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.open) {
 		int err;
 
-		if (1)
-			libfuse_print("open flags: 0x%x %s", fi->flags,
-				path);
-/* 
-Modified by Y.OGATA,  06/05/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 		err = fuse_compat_open(fs, (char*)path, fi);
-
-		if (1 && !err)
-			libfuse_print("   open[%lli] flags: 0x%x %s",
-				(unsigned long long) fi->fh, fi->flags, path);
+		if (fs->debug) 
+		    libfuse_print(" open[%llu] flags: 0x%x %s, errno %s",
+			(unsigned long long) fi->fh, fi->flags, path, strerror(errno));
 
 		return err;
 	} else {
+		libfuse_print("error open");
 		return 0;
 	}
 }
@@ -1369,23 +1285,23 @@ Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved.
 int fuse_fs_read(struct fuse_fs *fs, const char *path, char *buf, size_t size,
 		 off_t off, struct fuse_file_info *fi)
 {
+	if (fs->debug) 
+	   libfuse_print("fuse_fs_read(%s)", path);
+
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.read) {
 		int res;
-
-		if (1)
-			fprintf(stderr,
-				"read[%llu] %lu bytes from %llu flags: 0x%x",
-				(unsigned long long) fi->fh,
-				(unsigned long) size, (unsigned long long) off,
-				fi->flags);
+        if (fs->debug) 
+		   libfuse_print("read[%llu] %lu bytes from %llu flags: 0x%x", (unsigned long long) fi->fh,
+		(unsigned long) size, (unsigned long long) off, fi->flags);
 
 		res = fs->op.read(path, buf, size, off, fi);
 
-		if (1 && res >= 0)
-			libfuse_print("   read[%llu] %u bytes from %llu",
+		if (fs->debug && res >= 0)
+			libfuse_print("read[%llu] %u bytes from %llu",
 				(unsigned long long) fi->fh, res,
 				(unsigned long long) off);
+
 		if (res > (int) size)
 			libfuse_print("fuse: read too many bytes");
 
@@ -1402,7 +1318,7 @@ int fuse_fs_write(struct fuse_fs *fs, const char *path, const char *buf,
 	if (fs->op.write) {
 		int res;
 
-		if (1)
+		if (fs->debug) 
 			fprintf(stderr,
 				"write%s[%llu] %lu bytes to %llu flags: 0x%x",
 				fi->writepage ? "page" : "",
@@ -1412,7 +1328,7 @@ int fuse_fs_write(struct fuse_fs *fs, const char *path, const char *buf,
 
 		res = fs->op.write(path, buf, size, off, fi);
 
-		if (1 && res >= 0)
+		if (fs->debug && res >= 0)
 			libfuse_print("   write%s[%llu] %u bytes to %llu",
 				fi->writepage ? "page" : "",
 				(unsigned long long) fi->fh, res,
@@ -1431,7 +1347,7 @@ int fuse_fs_fsync(struct fuse_fs *fs, const char *path, int datasync,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.fsync) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("fsync[%llu] datasync: %i",
 				(unsigned long long) fi->fh, datasync);
 
@@ -1446,7 +1362,7 @@ int fuse_fs_fsyncdir(struct fuse_fs *fs, const char *path, int datasync,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.fsyncdir) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("fsyncdir[%llu] datasync: %i",
 				(unsigned long long) fi->fh, datasync);
 
@@ -1461,7 +1377,7 @@ int fuse_fs_flush(struct fuse_fs *fs, const char *path,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.flush) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("flush[%llu]",
 				(unsigned long long) fi->fh);
 
@@ -1475,21 +1391,14 @@ int fuse_fs_statfs(struct fuse_fs *fs, const char *path, struct statvfs *buf)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.statfs) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("statfs %s", path);
 
 		return fuse_compat_statfs(fs, path, buf);
 	} else {
+		libfuse_print("statfs  other %s", path);
 		buf->f_namemax = 255;
 		buf->f_bsize = 512;
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
         buf->f_frsize = 512;
 		return 0;
 	}
@@ -1500,7 +1409,7 @@ int fuse_fs_releasedir(struct fuse_fs *fs, const char *path,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.releasedir) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("releasedir[%llu] flags: 0x%x",
 				(unsigned long long) fi->fh, fi->flags);
 
@@ -1530,7 +1439,7 @@ int fuse_fs_readdir(struct fuse_fs *fs, const char *path, void *buf,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.readdir) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("readdir[%llu] from %llu",
 				(unsigned long long) fi->fh,
 				(unsigned long long) off);
@@ -1539,7 +1448,7 @@ int fuse_fs_readdir(struct fuse_fs *fs, const char *path, void *buf,
 	} else if (fs->op.getdir) {
 		struct fuse_dirhandle dh;
 
-		if (1)
+		if (fs->debug) 
 			libfuse_print("getdir[%llu]",
 				(unsigned long long) fi->fh);
 
@@ -1558,15 +1467,15 @@ int fuse_fs_create(struct fuse_fs *fs, const char *path, mode_t mode,
 	if (fs->op.create) {
 		int err;
 
-		if (1)
-			fprintf(stderr,
+		if (fs->debug) 
+			libfuse_print(
 				"create flags: 0x%x %s 0%o umask=0%03o",
 				fi->flags, path, mode,
 				fuse_get_context()->umask);
 
 		err = fs->op.create(path, mode, fi);
 
-		if (1 && !err)
+		if (fs->debug && !err)
 			libfuse_print("   create[%llu] flags: 0x%x %s",
 				(unsigned long long) fi->fh, fi->flags, path);
 
@@ -1581,7 +1490,7 @@ int fuse_fs_lock(struct fuse_fs *fs, const char *path,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.lock) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("lock[%llu] %s %s start: %llu len: %llu pid: %llu",
 				(unsigned long long) fi->fh,
 				(cmd == F_GETLK ? "F_GETLK" :
@@ -1605,7 +1514,7 @@ int fuse_fs_chown(struct fuse_fs *fs, const char *path, uid_t uid, gid_t gid)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.chown) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("chown %s %lu %lu", path,
 				(unsigned long) uid, (unsigned long) gid);
 
@@ -1619,7 +1528,7 @@ int fuse_fs_truncate(struct fuse_fs *fs, const char *path, off_t size)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.truncate) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("truncate %s %llu", path,
 				(unsigned long long) size);
 
@@ -1634,14 +1543,14 @@ int fuse_fs_ftruncate(struct fuse_fs *fs, const char *path, off_t size,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.ftruncate) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("ftruncate[%llu] %s %llu",
 				(unsigned long long) fi->fh, path,
 				(unsigned long long) size);
 
 		return fs->op.ftruncate(path, size, fi);
 	} else if (path && fs->op.truncate) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("truncate %s %llu", path,
 				(unsigned long long) size);
 
@@ -1656,7 +1565,7 @@ int fuse_fs_utimens(struct fuse_fs *fs, const char *path,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.utimens) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("utimens %s %li.%09lu %li.%09lu",
 				path, tv[0].tv_sec, tv[0].tv_nsec,
 				tv[1].tv_sec, tv[1].tv_nsec);
@@ -1665,7 +1574,7 @@ int fuse_fs_utimens(struct fuse_fs *fs, const char *path,
 	} else if(fs->op.utime) {
 		struct utimbuf buf;
 
-		if (1)
+		if (fs->debug) 
 			libfuse_print("utime %s %li %li", path,
 				tv[0].tv_sec, tv[1].tv_sec);
 
@@ -1681,7 +1590,7 @@ int fuse_fs_access(struct fuse_fs *fs, const char *path, int mask)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.access) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("access %s 0%o", path, mask);
 
 		return fs->op.access(path, mask);
@@ -1695,7 +1604,7 @@ int fuse_fs_readlink(struct fuse_fs *fs, const char *path, char *buf,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.readlink) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("readlink %s %lu", path,
 				(unsigned long) len);
 
@@ -1710,7 +1619,7 @@ int fuse_fs_mknod(struct fuse_fs *fs, const char *path, mode_t mode,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.mknod) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("mknod %s 0%o 0x%llx umask=0%03o",
 				path, mode, (unsigned long long) rdev,
 				fuse_get_context()->umask);
@@ -1725,7 +1634,7 @@ int fuse_fs_mkdir(struct fuse_fs *fs, const char *path, mode_t mode)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.mkdir) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("mkdir %s 0%o umask=0%03o",
 				path, mode, fuse_get_context()->umask);
 
@@ -1740,7 +1649,7 @@ int fuse_fs_setxattr(struct fuse_fs *fs, const char *path, const char *name,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.setxattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("setxattr %s %s %lu 0x%x",
 				path, name, (unsigned long) size, flags);
 
@@ -1755,7 +1664,7 @@ int fuse_fs_getxattr(struct fuse_fs *fs, const char *path, const char *name,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.getxattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("getxattr %s %s %lu",
 				path, name, (unsigned long) size);
 
@@ -1770,7 +1679,7 @@ int fuse_fs_listxattr(struct fuse_fs *fs, const char *path, char *list,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.listxattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("listxattr %s %lu",
 				path, (unsigned long) size);
 
@@ -1785,7 +1694,7 @@ int fuse_fs_bmap(struct fuse_fs *fs, const char *path, size_t blocksize,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.bmap) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("bmap %s blocksize: %lu index: %llu",
 				path, (unsigned long) blocksize,
 				(unsigned long long) *idx);
@@ -1800,7 +1709,7 @@ int fuse_fs_removexattr(struct fuse_fs *fs, const char *path, const char *name)
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.removexattr) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("removexattr %s %s", path, name);
 
 		return fs->op.removexattr(path, name);
@@ -1814,7 +1723,7 @@ int fuse_fs_ioctl(struct fuse_fs *fs, const char *path, int cmd, void *arg,
 {
 	fuse_get_context()->private_data = fs->user_data;
 	if (fs->op.ioctl) {
-		if (1)
+		if (fs->debug) 
 			libfuse_print("ioctl[%llu] 0x%x flags: 0x%x",
 				(unsigned long long) fi->fh, cmd, flags);
 
@@ -1831,13 +1740,13 @@ int fuse_fs_poll(struct fuse_fs *fs, const char *path,
 	if (fs->op.poll) {
 		int res;
 
-		if (1)
+		if (fs->debug) 
 			libfuse_print("poll[%llu] ph: %p",
 				(unsigned long long) fi->fh, ph);
 
 		res = fs->op.poll(path, fi, ph, reventsp);
 
-		if (1 && !res)
+		if (fs->debug && !res)
 			libfuse_print("   poll[%llu] revents: 0x%x",
 				(unsigned long long) fi->fh, *reventsp);
 
@@ -2136,7 +2045,7 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 			pthread_mutex_lock(&f->lock);
 			if (len == 1) {
 				if (f->conf.debug)
-					libfuse_print("LOOKUP-DOT");
+					fprintf(stderr, "LOOKUP-DOT\n");
 				dot = get_node_nocheck(f, parent);
 				if (dot == NULL) {
 					pthread_mutex_unlock(&f->lock);
@@ -2146,7 +2055,7 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 				dot->refctr++;
 			} else {
 				if (f->conf.debug)
-					libfuse_print("LOOKUP-DOTDOT");
+					fprintf(stderr, "LOOKUP-DOTDOT\n");
 				parent = get_node(f, parent)->parent->nodeid;
 			}
 			pthread_mutex_unlock(&f->lock);
@@ -2176,7 +2085,7 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 	if (!err) {
 		struct fuse_intr_data d;
 		if (f->conf.debug)
-			libfuse_print("LOOKUP %s", path);
+			libfuse_print("LOOKUP %s\n", path);
 		fuse_prepare_interrupt(f, req, &d);
 /* 
 Modified by F.KUMAGAE,  06/03/2015
@@ -2210,7 +2119,7 @@ Copyright (c) 2015 Sony Interactive Entertainment Inc. All Rights Reserved.
 				}
 				set_stat(f, e.ino, &e.attr);
 				if (f->conf.debug)
-					libfuse_print("   NODEID: %lu",
+					libfuse_print( "   NODEID: %lu\n",
 					(unsigned long) e.ino);
 			}
 		}
@@ -2621,6 +2530,7 @@ static void fuse_lib_create(fuse_req_t req, fuse_ino_t parent,
 			if (err)
 				fuse_fs_release(f->fs, path, fi);
 			else if (!S_ISREG(e.attr.st_mode)) {
+				libfuse_print("fuse_fs_create() returned non-regular file");
 				err = -EIO;
 				fuse_fs_release(f->fs, path, fi);
 				forget_node(f, e.ino, 1);
@@ -2639,17 +2549,11 @@ static void fuse_lib_create(fuse_req_t req, fuse_ino_t parent,
 		get_node(f, e.ino)->open_count++;
 		pthread_mutex_unlock(&f->lock);
 		if (fuse_reply_create(req, &e, fi) == -ENOENT) {
-/* 
-Modified by Y.ITO,  02/16/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 			/* The open syscall was interrupted, so it
 			   must be cancelled */
-			fuse_do_release(f, e.ino, path, fi);
+	        fuse_prepare_interrupt(f, req, &d);
+	        fuse_do_release(f, e.ino, path, fi);
+	        fuse_finish_interrupt(f, req, &d);
 			forget_node(f, e.ino, 1);
 		}
 	} else {
@@ -2706,9 +2610,11 @@ static void fuse_lib_open(fuse_req_t req, fuse_ino_t ino,
 	int err;
 
 	err = get_path(f, ino, &path);
+//	libfuse_print("get_path returned %i", err);
 	if (!err) {
 		fuse_prepare_interrupt(f, req, &d);
 		err = fuse_fs_open(f->fs, path, fi);
+		//libfuse_print("fuse_fs_open returned %i", err);
 		if (!err) {
 			if (f->conf.direct_io)
 				fi->direct_io = 1;
@@ -2725,20 +2631,12 @@ static void fuse_lib_open(fuse_req_t req, fuse_ino_t ino,
 		get_node(f, ino)->open_count++;
 		pthread_mutex_unlock(&f->lock);
 		if (fuse_reply_open(req, fi) == -ENOENT) {
-/* 
-Modified by Y.ITO,  02/16/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
-			/* The open syscall was interrupted, so it
-			   must be cancelled */
+			libfuse_print("fuse_reply_open returned -ENOENT");
 			fuse_do_release(f, ino, path, fi);
 		}
-	} else
+	} else{
 		reply_err(req, err);
+	}
 
 	free_path(f, ino, path);
 }
@@ -2864,14 +2762,6 @@ static void fuse_lib_opendir(fuse_req_t req, fuse_ino_t ino,
 	}
 	if (!err) {
 		if (fuse_reply_open(req, llfi) == -ENOENT) {
-/* 
-Modified by Y.ITO,  02/16/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 			/* The opendir syscall was interrupted, so it
 			   must be cancelled */
 			fuse_fs_releasedir(f->fs, path, &fi);
@@ -3084,6 +2974,7 @@ static void fuse_lib_statfs(fuse_req_t req, fuse_ino_t ino)
 		struct fuse_intr_data d;
 		fuse_prepare_interrupt(f, req, &d);
 		err = fuse_fs_statfs(f->fs, path ? path : "/", &buf);
+
 		fuse_finish_interrupt(f, req, &d);
 		free_path(f, ino, path);
 	}
@@ -3749,47 +3640,6 @@ static const struct fuse_opt fuse_lib_opts[] = {
 	FUSE_OPT_END
 };
 
-static void fuse_lib_help(void)
-{
-	fprintf(stderr,
-"    -o hard_remove         immediate removal (don't hide files)"
-"    -o use_ino             let filesystem set inode numbers"
-"    -o readdir_ino         try to fill in d_ino in readdir"
-"    -o direct_io           use direct I/O"
-"    -o kernel_cache        cache files in kernel"
-"    -o [no]auto_cache      enable caching based on modification times (off)"
-"    -o umask=M             set file permissions (octal)"
-"    -o uid=N               set file owner"
-"    -o gid=N               set file group"
-"    -o entry_timeout=T     cache timeout for names (1.0s)"
-"    -o negative_timeout=T  cache timeout for deleted names (0.0s)"
-"    -o attr_timeout=T      cache timeout for attributes (1.0s)"
-"    -o ac_attr_timeout=T   auto cache timeout for attributes (attr_timeout)"
-"    -o intr                allow requests to be interrupted"
-"    -o intr_signal=NUM     signal to send on interrupt (%i)"
-"    -o modules=M1[:M2...]  names of modules to push onto filesystem stack"
-"", FUSE_DEFAULT_INTR_SIGNAL);
-}
-
-static void fuse_lib_help_modules(void)
-{
-	struct fuse_module *m;
-	libfuse_print("\nModule options:");
-	pthread_mutex_lock(&fuse_context_lock);
-	for (m = fuse_modules; m; m = m->next) {
-		struct fuse_fs *fs = NULL;
-		struct fuse_fs *newfs;
-		struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
-		if (fuse_opt_add_arg(&args, "") != -1 &&
-		    fuse_opt_add_arg(&args, "-h") != -1) {
-			libfuse_print("\n[%s]", m->name);
-			newfs = m->factory(&args, &fs);
-			assert(newfs == NULL);
-		}
-		fuse_opt_free_args(&args);
-	}
-	pthread_mutex_unlock(&fuse_context_lock);
-}
 
 static int fuse_lib_opt_proc(void *data, const char *arg, int key,
 			     struct fuse_args *outargs)
@@ -3798,7 +3648,6 @@ static int fuse_lib_opt_proc(void *data, const char *arg, int key,
 
 	if (key == KEY_HELP) {
 		struct fuse_config *conf = (struct fuse_config *) data;
-		fuse_lib_help();
 		conf->help = 1;
 	}
 
@@ -3948,13 +3797,12 @@ struct fuse *fuse_new_common(struct fuse_chan *ch, struct fuse_args *args,
 	if (!f->conf.ac_attr_timeout_set)
 		f->conf.ac_attr_timeout = f->conf.attr_timeout;
 
-#ifdef __FreeBSD__
+
 	/*
 	 * In FreeBSD, we always use these settings as inode numbers
 	 * are needed to make getcwd(3) work.
 	 */
 	f->conf.readdir_ino = 1;
-#endif
 
 	if (compat && compat <= 25) {
 		if (fuse_sync_compat_args(args) == -1)
@@ -3963,8 +3811,7 @@ struct fuse *fuse_new_common(struct fuse_chan *ch, struct fuse_args *args,
 
 	f->se = fuse_lowlevel_new_common(args, &llop, sizeof(llop), f);
 	if (f->se == NULL) {
-		if (f->conf.help)
-			fuse_lib_help_modules();
+		libfuse_print("fuse: failed to allocate fuse session in fuse_lowlevel_new_common");
 		goto out_free_fs;
 	}
 

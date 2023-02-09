@@ -12,7 +12,6 @@
 extern "C" {
 #endif
 
-
 #define ORBIS_COMMON_DIALOG_MAGIC_NUMBER 0xC0D1A109
 
 

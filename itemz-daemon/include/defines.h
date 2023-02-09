@@ -178,3 +178,5 @@
 #define VERSION_MINOR_INIT \
     (VERSION_MINOR + '0')
 #endif
+
+#define ULPMGR_THREAD_PRIO_BASE		(903)

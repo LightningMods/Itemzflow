@@ -498,15 +498,6 @@ struct fuse_operations {
 	 */
 	int (*poll) (const char *, struct fuse_file_info *,
 		     struct fuse_pollhandle *ph, unsigned *reventsp);
-/* 
-Modified by Y.OGATA,  03/16/2012
-
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/		 
-	void (*mount_done) (int);
 };
 
 /** Extra context that may be needed by some filesystems

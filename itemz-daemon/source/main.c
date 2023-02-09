@@ -95,7 +95,7 @@ void PS_Button_loop()
             //get sample size
             scePadReadState(pad, &data);
             
-            if (data.buttons & PS_BUTTON) {//PS_BUTTON from RE
+            if (data.buttons & PS_BUTTON && is_home_redirect_enabled) {//PS_BUTTON from RE
 
                 log_info(" PS BUTTON Was Pressed & intercepted");
                 log_info(" Redirecting Home Menu to ItemzCore");
@@ -128,13 +128,11 @@ void PS_Button_loop()
     }
 }
 
-#define VERSION_MAJOR 1
-#define VERSION_MINOR 01
-
 void *Game_Stats_thread(void* args){
 
     char tid[16];
     int retries = 0;
+    ScePthread fuse_thread;
 
     log_info(" Game_Stats Thread Started");
     log_info(" sceLncUtilInitialize %x", sceLncUtilInitialize());
@@ -168,8 +166,8 @@ failed_timeout:
 
         //make sure app still exists
 		//if(!if_exists("/user/app/ITEM00001/")){
-        //    notify("ItemzFlow Not Installed!, Daemon Exiting...");
-        //    raise(SIGQUIT);
+          //  notify("ItemzFlow Not Installed!, Daemon Exiting...");
+            //raise(SIGQUIT);
         //}
 
         check_ftp_addr_change();
@@ -214,7 +212,7 @@ void *resource_monitor_thread(void *args){
 }
 int main(int argc, char* argv[])
 {
-   ScePthread thread, up_thread, stats_thr, fuse_thread;
+   ScePthread thread, up_thread, stats_thr;//, fuse_thread;
    // internals: net, user_service, system_service
    loadModulesVanilla();
 
@@ -236,17 +234,27 @@ int main(int argc, char* argv[])
    log_info(" Starting Game Stats Thread...");
    scePthreadCreate(&stats_thr, NULL, Game_Stats_thread, NULL, "Game_Stats_Thread");
 
-   log_info(" Starting Resource Monitor Thread...");
-   scePthreadCreate(&up_thread, NULL, resource_monitor_thread, NULL, "Resource_Monitor_Thread");
+  log_info(" Starting Resource Monitor Thread...");
+  scePthreadCreate(&up_thread, NULL, resource_monitor_thread, NULL, "Resource_Monitor_Thread");
 
-   //log_info(" Starting FUSE Thread...");
-   //scePthreadCreate(&fuse_thread, NULL, initialize_userland_fuse, NULL, "FUSE_Thread");
+  if(fuse_session_ip){	  
+    log_info(" Starting FUSE Thread IP %s", fuse_session_ip);
+    if(initialize_userland_fuse("/hostapp") == NO_ERROR){
+      log_info(" FUSE Thread Started!");
+      notify("Connected to Network Share!");
+    }
+    else{
+	  log_error("FUSE Thread Failed to Start!");
+      notify("Failed to connect to Network Share!");
+    }
+  }
+
    log_info(" Starting FTP & Infinix...");
    if(!StartFTP())
-      log_error(" Failed to Start FTP & Infinix");
-   else
-      log_info(" FTP Started Successfully");
-
+     log_error(" Failed to Start FTP & Infinix");
+  else
+     log_info(" FTP Started Successfully");
+//
    log_info(" Starting main PS Button loop...");
    PS_Button_loop();
 

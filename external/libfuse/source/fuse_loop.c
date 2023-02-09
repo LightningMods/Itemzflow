@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <fuse.h>
 
 int fuse_session_loop(struct fuse_session *se)
 {

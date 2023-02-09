@@ -16,7 +16,7 @@
 uint8_t CONNECT_TEST(struct clientArgs* client, uint8_t** mode, uint32_t* length)
 {
 	// Re-allocate memory
-	*mode = realloc(*mode, 99);
+	*mode = realloc(*mode, sizeof("Connected")+1);
 
 	sprintf((char*)(*mode), "Connected");
 	*length = strlen((char*)(*mode));
@@ -24,6 +24,7 @@ uint8_t CONNECT_TEST(struct clientArgs* client, uint8_t** mode, uint32_t* length
 	return NO_ERROR;
 }
 
+void *fuse_session_ip = NULL;
 extern bool is_home_redirect_enabled;
 extern bool critical_suspend;
 // extern bool critical_suspend2;
@@ -56,6 +57,24 @@ uint8_t get_game_mins(struct clientArgs* client, uint8_t* in, uint32_t* length)
 
 	return NO_ERROR;
 }
+
+uint8_t set_fuse_session_ip(struct clientArgs* client, uint8_t* in, uint32_t* length)
+{
+	char* input = (char*)(in + 1); // TITLE ID, SKIP THE COMMAND BIT
+
+    //DumpHex((const void*)input, strlen(input)); //HEX Dump IPC Title ID
+	if(fuse_session_ip){
+		log_error("[FUSE SESSION] session ip already set");
+		return FUSE_IP_ALREADY_SET;
+	}
+	else{
+		fuse_session_ip = strdup(input);
+		log_info("[FUSE SESSION] session ip set to %s", fuse_session_ip);
+	}
+
+	return NO_ERROR;
+}
+
 
 uint8_t get_game_start(struct clientArgs* client, uint8_t* in, uint32_t* length)
 {
@@ -100,10 +119,61 @@ void handleIPC(struct clientArgs* client, uint8_t* buffer, uint32_t length)
 	uint8_t *outputBuffer = (uint8_t*)malloc(sizeof(uint8_t));
 	uint32_t outputLength = 0;
 
-
 	uint8_t method = buffer[0];
 	switch (method)
 	{
+	case FUSE_SET_DEBUG_FLAG:
+		log_info("[Daemon IPC][client %i] FUSE_SET_DEBUG_FLAG command called", client->cl_nmb);
+		fuse_debug_flag = true;
+        log_info("[Daemon IPC][client %i] Debug FUSE Flag set", client->cl_nmb);
+		break;
+	case FUSE_SET_SESSION_IP:
+		error = set_fuse_session_ip(client, buffer, &outputLength);
+		outputBuffer = realloc(outputBuffer, outputLength);
+		memcpy(outputBuffer, buffer, outputLength);
+		break;
+	/*case MACGUFFIN_CMD:
+		log_info("[Daemon IPC][client %i] MACGUFFIN command called", client->cl_nmb);
+		log_info(" Starting FUSE Thread...");
+        scePthreadCreate(&fuse_thread, NULL, initialize_userland_fuse, NULL, "FUSE_Thread");
+		break;*/
+	case RESTART_FUSE_FS:
+		log_info("[Daemon IPC][client %i] RESTART_FUSE_FS command called", client->cl_nmb);
+		log_info(" Restarting FUSE & Daemon...");
+		uint8_t* fuse_ret_msg = malloc(1);
+	    fuse_ret_msg[0] = NO_ERROR; // First byte is always error byte
+	    networkSendData(client->socket, fuse_ret_msg, 1);
+		unlink("/system_tmp/IPC_init");
+		unlink("/system_tmp/IPC_Socket");
+		free(fuse_ret_msg);
+		reboot_daemon = true;
+        raise(SIGQUIT);
+		break; 
+	case FUSE_START_W_PATH:
+		log_info("[Daemon IPC][client %i] FUSE_START_W_PATH command called", client->cl_nmb);
+	    const char* fuse_mountpoint = (const char*)(buffer + 1); // get FUSE mountpoint from the daemon command
+		char temp[0x100];
+		if(strlen(fuse_mountpoint) < 3){
+			log_error("[Daemon IPC][client %i] FUSE_START_W_PATH command called with invalid mountpoint", client->cl_nmb);
+			error = OPERATION_FAILED;
+			break;
+		}
+		if(!fuse_session_ip){
+			log_error("[Daemon IPC][client %i] FUSE_START_W_PATH command called with no session ip set", client->cl_nmb);
+			error = FUSE_IP_NOT_SET;
+			break;
+		}
+
+		strncpy(&temp[0], fuse_session_ip, 0x100); 
+		log_info(" Starting FUSE Thread IP %s & mp %s", fuse_session_ip, fuse_mountpoint);
+		if((error = initialize_userland_fuse(fuse_mountpoint)) == NO_ERROR){
+			log_info(" FUSE Thread Started!");
+			save_fuse_ip(&temp[0]);
+		}
+		else
+			log_error("FUSE Thread Failed to Start with code %i!", error);
+		
+		break;
 	case GAME_GET_START_TIME:
 		error = get_game_start(client, buffer, &outputLength);
 		outputBuffer = realloc(outputBuffer, outputLength);
@@ -113,11 +183,16 @@ void handleIPC(struct clientArgs* client, uint8_t* buffer, uint32_t length)
 	    ShutdownFTP();
 		notify("FTP Restarting...");
         StartFTP();
-		error = NO_ERROR;
         break;
 	case SHUTDOWN_DAEMON:
 		log_info("[Daemon IPC][client %i] command SHUTDOWN_DAEMON() called", client->cl_nmb);
 		notify("Daemon Shutting Down...");
+		uint8_t* shutdown_reply = malloc(1);
+	    shutdown_reply[0] = NO_ERROR; // First byte is always error byte
+	    networkSendData(client->socket, shutdown_reply, 1);
+		unlink("/system_tmp/IPC_init");
+		unlink("/system_tmp/IPC_Socket");
+		free(shutdown_reply);
 		raise(SIGQUIT);
 		break;
     case GAME_GET_MINS:
@@ -144,13 +219,16 @@ void handleIPC(struct clientArgs* client, uint8_t* buffer, uint32_t length)
 	}
 	case DEAMON_UPDATE: {
 		log_info("[Daemon IPC][client %i] command DEAMON_UPDATE() called", client->cl_nmb);
+		log_info("[Daemon IPC][client %i] Reloading Daemon ...", client->cl_nmb);
+		log_info("Daemon Rejailed, Rebooting Daemon ...");
+		uint8_t* outputBufferFull = malloc(1);
+	    outputBufferFull[0] = NO_ERROR; // First byte is always error byte
+	    networkSendData(client->socket, outputBufferFull, 1);
+		free(outputBufferFull);
+		reboot_daemon = true;
 		unlink("/system_tmp/IPC_init");
 		unlink("/system_tmp/IPC_Socket");
-		log_info("[Daemon IPC][client %i] Reloading Daemon ...", client->cl_nmb);
-		rejail();
-		log_info("Daemon Rejailed, Rebooting Daemon ...");
-        sceSystemServiceLoadExec("/app0/eboot.bin", 0);
-		error = NO_ERROR;
+        raise(SIGQUIT);
 		break;
 	}
 	case CRITICAL_SUSPEND: {
@@ -178,8 +256,6 @@ void handleIPC(struct clientArgs* client, uint8_t* buffer, uint32_t length)
         copyRegFile("/user/app/ITEM00001/settings.ini", "/user/update_tmp/settings.ini");
 		copy_dir("/user/app/ITEM00001/covers", "/user/update_tmp/covers");
 		copy_dir("/user/app/ITEM00001/custom_app_names", "/user/update_tmp/custom_app_names");
-
-
 
 		//copy_dir("/user/update", "/user/update_tmp");
 		long pkg_size = 0;
@@ -211,7 +287,7 @@ void handleIPC(struct clientArgs* client, uint8_t* buffer, uint32_t length)
 	  break;
 	}
 	}
-
+   
 	uint8_t* outputBufferFull = malloc(outputLength + 1);
 
 	outputBufferFull[0] = error; // First byte is always error byte

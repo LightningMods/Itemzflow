@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <fuse.h>
 #include <sys/wait.h>
 
 struct message {
@@ -256,6 +257,7 @@ static int ulockmgr_send_request(struct message *msg, const void *id,
 	if (res == -1) {
 		free(newf);
 		close(cfd);
+		libfuse_print("libulockmgr: EIO");
 		return -EIO;
 	}
 
@@ -269,7 +271,7 @@ static int ulockmgr_send_request(struct message *msg, const void *id,
 
 	res = do_recv(cfd, msg, sizeof(struct message), MSG_WAITALL);
 	if (res == -1) {
-		perror("libulockmgr: recv");
+		libfuse_print("libulockmgr: recv");
 		msg->error = EIO;
 	} else if (res != sizeof(struct message)) {
 		libfuse_print("libulockmgr: recv short");
@@ -296,7 +298,7 @@ static int ulockmgr_send_request(struct message *msg, const void *id,
 				break;
 			} else if (errno_save != EINTR) {
 				errno = errno_save;
-				perror("libulockmgr: recv");
+				libfuse_print("libulockmgr: recv");
 				msg->error = EIO;
 				break;
 			}
@@ -304,7 +306,7 @@ static int ulockmgr_send_request(struct message *msg, const void *id,
 			res = send(o->cfd, msg, sizeof(struct message),
 				   MSG_NOSIGNAL);
 			if (res == -1) {
-				perror("libulockmgr: send");
+				libfuse_print("libulockmgr: send");
 				msg->error = EIO;
 				break;
 			}

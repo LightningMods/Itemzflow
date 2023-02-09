@@ -43,7 +43,8 @@ struct item_t
     multi_t  multi_sel;
 
     std::unordered_map<std::string, std::string> extra_sfo_data;
-    bool is_ext_hdd = false, is_fpkg = true, is_dumpable = false, app_vis = true, is_ph = false;
+    bool is_ext_hdd = false, is_fpkg = true, is_vapp = false;
+    bool is_dumpable = false, app_vis = true, is_ph = false;
     // need to add index for texture atlas
 };
 
@@ -271,7 +272,7 @@ typedef enum {
     REBUILD_DB_OPTION,
     THEME_OPTION,
     BACKGROUND_MP3_OPTION,
-    SHOW_BUTTON_OPTION,
+    FUSE_IP_OPTION,
     OPEN_SHELLUI_MENU,
     IF_PKG_INSTALLER_OPTION,
     POWER_CONTROL_OPTION,
@@ -282,7 +283,7 @@ typedef enum
 {
     DOWNLOAD_COVERS_OPTION = 12,
     RESET_THEME_OPTION = 13,
-    REFLECTION_OPTION = 14,
+    SHOW_BUTTON_OPTION = 14,
     CHANGE_BACKGROUND_OPTION = 15,
     COVER_MESSAGE_OPTION  = 16,
     FONT_OPTION = 11,
@@ -338,6 +339,13 @@ typedef enum
     Restore_apps_opt,
    
 } Ops_for_cf;
+
+typedef enum
+{
+    LAUNCH_HA, 
+    REFRESH_HA, 
+   
+} Ops_for_hostapp;
 
 // menu entry strings
 #define  LPANEL_Y  (5)
@@ -445,7 +453,7 @@ extern double u_t;
 
 extern std::string completeVersion;
 
-void GLES2_Draw_sysinfo(void);
+void GLES2_Draw_sysinfo(bool is_idle);
 void GLES2_refresh_sysinfo(void);
 
 // disk free percentages
@@ -556,3 +564,4 @@ void get_stat_from_file(std::string &out_str, std::string &filepath_str);
 std::string category_get_str(Sort_Category num);
 std::string power_menu_get_str(Power_control_sel num);
 std::string uninstall_get_str(Uninstall_Multi_Sel num);
+void itemzcore_add_text(vertex_buffer_t* vert_buffer,float x, float y, std::string text);

@@ -319,9 +319,10 @@ SIGSEGV_handler:
 
 backtrace_and_exit:
     log_debug("backtrace_and_exit called");
-#if UPDATE_TESTING==0
-    mkdir("/user/recovery.flag", 0777);
-#endif
+    
+    if(get->setting_bools[INTERNAL_UPDATE])
+        mkdir("/user/recovery.flag", 0777);
+
     profpath =  fmt::format("/mnt/proc/{0:d}/", getpid());
 
     if (getuid() == 0 && !if_exists(profpath.c_str()))
@@ -386,7 +387,7 @@ log_debug("App Resumed Checking for opened games...");
 // only unlcok at the end of the func
 pthread_mutex_lock(&disc_lock);
 
-if(app_status != APP_NA_STATUS){
+if(!is_remote_va_launched && app_status != APP_NA_STATUS){
 int BigAppid = sceSystemServiceGetAppIdOfBigApp();
 if ((BigAppid & ~0xFFFFFF) == 0x60000000) {
     log_info("[SIGNAL] FOUND Open Game: %x : Bool: %d", BigAppid, (BigAppid & ~0xFFFFFF) == 0x60000000);

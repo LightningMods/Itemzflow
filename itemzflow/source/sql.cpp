@@ -622,7 +622,7 @@ bool Fix_Game_In_DB(std::vector<item_t> &app_info, int index, bool is_ext_hdd) {
     else
       insert_app_info(item.id, SERV_ID2, "0", false);
   }
-  for (int i = 1; i <= 30; i++) {
+  for (int i = 0; i < 30; i++) {
     std::string title = fmt::format("TITLE_{0:}{1:d}", (i < 10) ? "0" : "", i);
     if (!item.extra_sfo_data[title].empty()) {
       if (!insert_app_info(item.id, title, item.extra_sfo_data[title])) {

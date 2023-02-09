@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <fuse.h>
 #include <string.h>
 #include <assert.h>
 
@@ -53,14 +54,6 @@ int fuse_opt_add_arg(struct fuse_args *args, const char *arg)
 	char *newarg;
 
 	assert(!args->argv || args->allocated);
-/* 
-Modified by Y.ITO,  02/16/2016
-
----------------
-Copyright (c) 2016 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	newarg = strdup(arg);
 	if (!newarg)
 		return alloc_failed();
@@ -266,14 +259,6 @@ static int process_opt_sep_arg(struct fuse_opt_context *ctx,
 		return -1;
 
 	param = ctx->argv[ctx->argctr];
-/* 
-Modified by F.KUMAGAE,  05/15/2014
-
----------------
-Copyright (c) 2014 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 	size_t newargsize = sep + strlen(param) + 1;
 	newarg = malloc(newargsize);
 	if (!newarg)

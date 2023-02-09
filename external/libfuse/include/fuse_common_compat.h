@@ -16,18 +16,8 @@ struct fuse_file_info_compat {
 	unsigned int direct_io : 1;
 	unsigned int keep_cache : 1;
 };
-/* 
-Modified by Y.OGATA,  03/16/2012
 
----------------
-Copyright (c) 2012 Sony Interactive Entertainment Inc. All Rights Reserved. 
----------------
-
-*/
 int fuse_mount_compat25(const char *mountpoint, struct fuse_args *args, const struct fuse_operations *op);
-
 int fuse_mount_compat22(const char *mountpoint, const char *opts);
-
 int fuse_mount_compat1(const char *mountpoint, const char *args[]);
-
 void fuse_unmount_compat22(const char *mountpoint);

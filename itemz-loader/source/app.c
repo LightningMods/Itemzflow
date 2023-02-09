@@ -44,15 +44,30 @@ const unsigned char completeVersion[] = {VERSION_MAJOR_INIT,
 
 void logshit(char* format, ...)
 {
-	char buff[1024];
-	memset(buff, 0, 1024);
+     //Check the length of the format string.
+    // If it is too long, return immediately.
+    if (strlen(format) > 1000) {
+        return;
+    }
 
-	va_list args;
-	va_start(args, format);
-	vsprintf(&buff[0], format, args);
-	va_end(args);
+    // Initialize a buffer to hold the formatted log message.
+    char buff[1024];
 
-	sceKernelDebugOutText(DGB_CHANNEL_TTYL, &buff[0]);
+    // Initialize a va_list to hold the variable arguments passed to the function.
+    va_list args;
+    va_start(args, format);
+
+    // Format the log message using the format string and the variable arguments.
+    vsprintf(buff, format, args);
+
+    // Clean up the va_list.
+    va_end(args);
+
+    // Append a newline character to the log message.
+    strcat(buff, "\n");
+
+    // Output the log message using sceKernelDebugOutText.
+    sceKernelDebugOutText(DGB_CHANNEL_TTYL, buff);
 
 	int fd = sceKernelOpen("/user/app/ITEM00001/logs/loader.log", O_WRONLY | O_CREAT | O_APPEND, 0777);
 	if (fd >= 0)
@@ -70,7 +85,7 @@ bool rmtree(const char path[]) {
     DIR* dr = opendir(path);
     if (dr == NULL)
     {
-        logshit("No file or directory found: %s\n", path);
+        logshit("No file or directory found: %s", path);
         return false;
     }
     while ((de = readdir(dr)) != NULL)
@@ -84,7 +99,7 @@ bool rmtree(const char path[]) {
         {
             if (S_ISDIR(statbuf.st_mode))
             {
-                logshit("removing dir: %s Err: %d\n", fname, ret = unlinkat(dirfd(dr), fname, AT_REMOVEDIR));
+                logshit("removing dir: %s Err: %d", fname, ret = unlinkat(dirfd(dr), fname, AT_REMOVEDIR));
                 if (ret != 0)
                 {
                     rmtree(fname);
@@ -93,7 +108,7 @@ bool rmtree(const char path[]) {
             }
             else
             {
-                logshit("Removing file: %s, Err: %d\n", fname, unlink(fname));
+                logshit("Removing file: %s, Err: %d", fname, unlink(fname));
             }
         }
     }
@@ -102,7 +117,7 @@ bool rmtree(const char path[]) {
     return true;
 }
 
-int copyFile(char* sourcefile, char* destfile)
+int copyFile(const char* sourcefile, const char* destfile)
 {
 	int src = sceKernelOpen(sourcefile, 0x0000, 0);
 	if (src > 0)
@@ -129,8 +144,8 @@ int copyFile(char* sourcefile, char* destfile)
 	}
 	else
 	{
-		logshit("[ELFLOADER] fuxking error\n");
-        logshit("[Itemz-loader:%s:%i] ----- src fd = %i---\n", __FUNCTION__, __LINE__, src);
+		logshit("[ELFLOADER] fuxking error");
+        logshit("[Itemz-loader:%s:%i] ----- src fd = %i---", __FUNCTION__, __LINE__, src);
 		return -1;
 	}
 }
@@ -139,7 +154,7 @@ bool if_exists(const char* path)
 {
 	int dfd = open(path, O_RDONLY, 0); // try to open dir
 	if (dfd < 0) {
-		logshit("path %s, errno %s\n", path, strerror(errno));
+		logshit("path %s, errno %s", path, strerror(errno));
 		return false;
 	}
 	else
@@ -153,29 +168,29 @@ void init_itemzGL_modules()
 {
 	
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_SYSTEM_SERVICE);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_SYSTEM_SERVICE\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_SYSTEM_SERVICE");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_USER_SERVICE);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_USER_SERVICE\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_USER_SERVICE");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_NETCTL);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_NETCTL\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_NETCTL");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_NET);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_NET\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_NET");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_HTTP);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_HTTP\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_HTTP");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_SSL);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_SSL\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_SSL");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_SYS_CORE);
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_SYS_CORE\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_SYS_CORE");
 	sceSysmoduleLoadModuleInternal(0x80000018);
-	logshit("[DEBUG] Started Internal Module 0x80000018\n");
+	logshit("[DEBUG] Started Internal Module 0x80000018");
 	sceSysmoduleLoadModuleInternal(0x80000026);  // 0x80000026
-	logshit("[DEBUG] Started Internal Module libSceSysUtil_SYSMODULE_INTERNAL_NETCTL\n");
+	logshit("[DEBUG] Started Internal Module libSceSysUtil_SYSMODULE_INTERNAL_NETCTL");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_BGFT);  // 0x80000026
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_BGFT\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_BGFT");
 	sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_APPINSTUTIL);  // 0x80000026 0x80000037
-	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_APPINSTUTIL\n");
+	logshit("[DEBUG] Started Internal Module SCE_SYSMODULE_INTERNAL_APPINSTUTIL");
 	sceSysmoduleLoadModuleInternal(0x80000024);  // 0x80000026 0x80000037
-	logshit("[DEBUG] Started Internal Module PAD (0x80000024)\n");
+	logshit("[DEBUG] Started Internal Module PAD (0x80000024)");
     sceSysmoduleLoadModule(ORBIS_SYSMODULE_MESSAGE_DIALOG);
 	orbisPadInit();
 }
@@ -188,7 +203,7 @@ void loader_rooted(void *arg){
 
 		if(Confirmation_Msg("ItemzLoader Recovery Menu\n\n\nDo you want to Factory reset ItemzFlow??\n\nWarning: ItemzFlow App Stats, Covers, Settings, Updates, Themes and More will be Deleted!") == YES){
 			   //rmtree app.xml app.pkg app.pbm.backup  app.pbm  app.json
-               logshit("Starting factory reset...\n");
+               logshit("Starting factory reset...");
 			   mkdir("/user/app/reset", 0777);
 			   copyFile("/user/app/ITEM00001/app.xml", "/user/app/reset/app.xml");
 			   copyFile("/user/app/ITEM00001/app.pkg", "/user/app/reset/app.pkg");
@@ -207,17 +222,17 @@ void loader_rooted(void *arg){
 			   rmtree("/user/app/reset");
 			   rmdir("/user/app/reset");
 
-			   logshit("Factory reset done!\n");
+			   logshit("Factory reset done!");
 			   unlink("/usb0/recovery.flag");
 			   rmdir("/usb0/recovery.flag");
 			   unlink("/user/recovery.flag");
 			   rmdir("/user/recovery.flag");
 		       msgok("ItemzLoader Recovery Menu\n\n\nItemzFlow has been Factory Reset!\n\nPress OK to exit");
-			   logshit("Factory reset complete!\n");
+			   logshit("Factory reset complete!");
 			   sceSystemServiceLoadExec("EXIT", NULL);
 			}
 			else
-			   logshit("ItemzLoader Recovery Canned...\n");
+			   logshit("ItemzLoader Recovery Canned...");
 
 		    unlink("/usb0/recovery.flag");
 			rmdir("/usb0/recovery.flag");
@@ -225,23 +240,23 @@ void loader_rooted(void *arg){
 			rmdir("/user/recovery.flag");
 	}
 
-	logshit("After jb\n");
+	logshit("After jb");
 	mkdir("/user/app/ITEM00001/storedata/", 0777);
 	mkdir("/user/app/ITEM00001/logs/", 0777);
 	unlink("/user/app/ITEM00001/logs/loader.log");
 
-	logshit("[Itemz-loader:%s:%i] -----  All Internal Modules Loaded  -----\n", __FUNCTION__, __LINE__);
-	logshit("------------------------ Itemz Loader[GL] Compiled Time: %s @ %s EST -------------------------\n", __DATE__, __TIME__);
-	logshit("[Itemz-loader:%s:%i] -----  Itemz-Loader Version: %s  -----\n", __FUNCTION__, __LINE__, completeVersion);
-	logshit("----------------------------------------------- -------------------------\n");
+	logshit("[Itemz-loader:%s:%i] -----  All Internal Modules Loaded  -----", __FUNCTION__, __LINE__);
+	logshit("------------------------ Itemz Loader[GL] Compiled Time: %s @ %s EST -------------------------", __DATE__, __TIME__);
+	logshit("[Itemz-loader:%s:%i] -----  Itemz-Loader Version: %s  -----", __FUNCTION__, __LINE__, completeVersion);
+	logshit("----------------------------------------------- -------------------------");
 
  	if (if_exists("/usb0/settings.ini"))
-		logshit("[Itemz-loader:%s:%i] ----- FOUND USB RECOVERY INI ---\n", __FUNCTION__, __LINE__);
+		logshit("[Itemz-loader:%s:%i] ----- FOUND USB RECOVERY INI ---", __FUNCTION__, __LINE__);
 	else
 	{
 		if (!if_exists("/user/app/ITEM00001/settings.ini"))
 		{
-			logshit("[Itemz-loader:%s:%i] ----- APP INI Not Found, Making ini ---\n", __FUNCTION__, __LINE__);
+			logshit("[Itemz-loader:%s:%i] ----- APP INI Not Found, Making ini ---", __FUNCTION__, __LINE__);
 
 			char buff[1024];
 			memset(&buff[0], 0, 1024);
@@ -260,15 +275,15 @@ void loader_rooted(void *arg){
 
 		}
 		else
-		   logshit("[Itemz-loader:%s:%i] ----- INI FOUND ---\n", __FUNCTION__, __LINE__);
+		   logshit("[Itemz-loader:%s:%i] ----- INI FOUND ---", __FUNCTION__, __LINE__);
 
 	}
 
-    logshit("[Itemz-loader:%s:%i] -----  Starting daemon services  -----\n", __FUNCTION__, __LINE__);
+    logshit("[Itemz-loader:%s:%i] -----  Starting daemon services  -----", __FUNCTION__, __LINE__);
 	if(boot_daemon_services())
-	   logshit("[Itemz-loader:%s:%i] -----  Daemon services started  -----\n", __FUNCTION__, __LINE__);
+	   logshit("[Itemz-loader:%s:%i] -----  Daemon services started  -----", __FUNCTION__, __LINE__);
 	else
-	   logshit("[Itemz-loader:%s:%i] -----  Daemon services failed to start  -----\n", __FUNCTION__, __LINE__);
+	   logshit("[Itemz-loader:%s:%i] -----  Daemon services failed to start  -----", __FUNCTION__, __LINE__);
 	 // wrapper();
 
 }
