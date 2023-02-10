@@ -81,7 +81,7 @@ Fuse_IP=nfs://192.1.2.3/nfs_share
 the NFS formatted string can be entered in the app using the in-app keyboard or set in the settings.ini file
 
 ```
-nfs://PC_IP//share_name
+nfs://PC_IP/share_name
 ```
 or if your share name is /
 ```
