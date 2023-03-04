@@ -188,15 +188,15 @@ Shader=0
 
 Invite: https://discord.gg/GvzDdx9GTc
 
-# Game Patches
+## Game Patches
 Custom Game Patches for PlayStation 4 Games.
 
-## Features
+### Features
 * `.xml` support
 
-## Usage
+### Usage
 
-#### Easy Installation
+### Easy Installation
 - Patches can be configured, install/update via:
   - [GoldHEN Cheat Manager](https://github.com/GoldHEN/GoldHEN_Cheat_Manager/releases/latest)
   - [Itemzflow Game Manager](https://github.com/LightningMods/Itemzflow)
