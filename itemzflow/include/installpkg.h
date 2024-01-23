@@ -80,7 +80,10 @@ struct bgft_init_params {
 };
 
 typedef struct install_args {
-    char* title_id, *fname; int task_id; char* path;  bool is_thread, delete_pkg; void* bgft_heap;
+    char* title_id, *fname,* path; 
+    bool is_thread = false, delete_pkg = true; 
+    void* bgft_heap;
+    int max_pkgs = 1, curr_pkg = 1, task_id = -1;
 }install_args;
 
 struct bgft_download_task_progress_info {
@@ -187,4 +190,4 @@ int sceBgftServiceTerm(void);
 #if defined(__cplusplus)
 }  
 #endif
-uint32_t pkginstall(const char *fullpath, const char* filename, bool Show_install_prog, bool delete_pkg_after);
+uint32_t pkginstall(const char *fullpath, const char* filename, bool Show_install_prog, bool delete_pkg_after, int max_pkgs = 1, int curr_pkg = 1);

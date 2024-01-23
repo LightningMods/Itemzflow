@@ -7,12 +7,13 @@ extern int numb_of_settings;
 std::unordered_map<std::string, std::string> stropts;
 std::vector<std::string> gm_p_text(20);
 std::vector<std::string> ITEMZ_SETTING_TEXT(NUMBER_OF_SETTINGS + 10);
+using namespace LANG_STR;
 //
 // https://github.com/Al-Azif/ps4-payload-guest/blob/main/src/Language.cpp
 //
-const char *Language_GetName(int m_Code)
+std::string Language_GetName(int m_Code)
 {
-    const char *s_Name;
+    std::string s_Name;
 
     switch (m_Code)
     {
@@ -127,7 +128,7 @@ int32_t PS4GetLang()
     return lang;
 }
 
-std::string getLangSTR(enum Lang_STR str)
+std::string getLangSTR(LANG_STR::LANG_STRINGS str)
 {
     if (lang_is_initialized)
     {
@@ -158,37 +159,37 @@ void fill_menu_text()
         log_info("In Advanced menu, skipping..");
         return;
     }
-    ITEMZ_SETTING_TEXT[0] = fmt::format("{0:.20}", getLangSTR(SETTINGS_1));
-    ITEMZ_SETTING_TEXT[1] = fmt::format("{0:.30}", getLangSTR(SETTINGS_2));
-    ITEMZ_SETTING_TEXT[2] = fmt::format("{0:.30}", getLangSTR(SETTINGS_3));
-    ITEMZ_SETTING_TEXT[3] = fmt::format("{0:.30}", getLangSTR(SETTINGS_4));
-    ITEMZ_SETTING_TEXT[4] = fmt::format("{0:.30}", getLangSTR(SETTINGS_5));
-    ITEMZ_SETTING_TEXT[5] = fmt::format("{0:.30}", getLangSTR(SETTINGS_6));
-    ITEMZ_SETTING_TEXT[6] = fmt::format("{0:.30}", getLangSTR(SETTINGS_7));
-    ITEMZ_SETTING_TEXT[7] = fmt::format("{0:.30}", getLangSTR(SETTINGS_8));
-    ITEMZ_SETTING_TEXT[8] = fmt::format("{0:.30}", getLangSTR(SETTINGS_9));
-    ITEMZ_SETTING_TEXT[9] = fmt::format("{0:.30}", getLangSTR(SETTINGS_10));
-    ITEMZ_SETTING_TEXT[10] = fmt::format("{0:.30}", getLangSTR(SETTINGS_11));
+    ITEMZ_SETTING_TEXT[0] = fmt::format("{0:.20}", getLangSTR(LANG_STR::SETTINGS_1));
+    ITEMZ_SETTING_TEXT[1] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_2));
+    ITEMZ_SETTING_TEXT[2] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_3));
+    ITEMZ_SETTING_TEXT[3] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_4));
+    ITEMZ_SETTING_TEXT[4] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_5));
+    ITEMZ_SETTING_TEXT[5] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_6));
+    ITEMZ_SETTING_TEXT[6] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_7));
+    ITEMZ_SETTING_TEXT[7] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_8));
+    ITEMZ_SETTING_TEXT[8] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_9));
+    ITEMZ_SETTING_TEXT[9] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_10));
+    ITEMZ_SETTING_TEXT[10] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_11));
 
-    ITEMZ_SETTING_TEXT[11] = fmt::format("{0:.30}", getLangSTR(SETTINGS_12));
+    ITEMZ_SETTING_TEXT[11] = fmt::format("{0:.30}", getLangSTR(LANG_STR::SETTINGS_12));
 
-    ITEMZ_SETTING_TEXT[12] = fmt::format("{0:.30}", getLangSTR(EXTRA_SETTING_1));
-    ITEMZ_SETTING_TEXT[13] = fmt::format("{0:.30}", getLangSTR(EXTRA_SETTING_2));
-    ITEMZ_SETTING_TEXT[14] = fmt::format("{0:.30}", getLangSTR(EXTRA_SETTING_3));
-    ITEMZ_SETTING_TEXT[15] = fmt::format("{0:.30}", getLangSTR(EXTRA_SETTING_4));
-    ITEMZ_SETTING_TEXT[16] = fmt::format("{0:.30}", getLangSTR(EXTRA_SETTING_5));
-    ITEMZ_SETTING_TEXT[17] = fmt::format("{0:.30}", getLangSTR(EXTRA_SETTING_6));
+    ITEMZ_SETTING_TEXT[12] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_1));
+    ITEMZ_SETTING_TEXT[13] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_2));
+    ITEMZ_SETTING_TEXT[14] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_3));
+    ITEMZ_SETTING_TEXT[15] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_4));
+    ITEMZ_SETTING_TEXT[16] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_5));
+    ITEMZ_SETTING_TEXT[17] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_6));
 
-    gm_p_text[0] = fmt::format("{0:.20}", getLangSTR(LAUNCH_GAME));
-    gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(DUMP_1));
-    gm_p_text[2] = fmt::format("{0:.20}", getLangSTR(UNINSTALL));
-    gm_p_text[3] = fmt::format("{0:.20}", getLangSTR(GAME_SAVE_OPTS));
-    gm_p_text[4] = fmt::format("{0:.20}", getLangSTR(TRAINERS));
-    gm_p_text[5] = fmt::format("{0:.20}", getLangSTR(HIDE_APP_OPT));
-    gm_p_text[6] = fmt::format("{0:.20}", getLangSTR(CHANGE_ICON));
-    gm_p_text[7] = fmt::format("{0:.20}", getLangSTR(CHANGE_APP_NAME));
-    gm_p_text[8] = fmt::format("{0:.20}", getLangSTR(MOVE_APP_OPT));
-    gm_p_text[9] = fmt::format("{0:.20}", getLangSTR(RESTORE_APP_OPT));
+    gm_p_text[0] = fmt::format("{0:.20}", getLangSTR(LANG_STR::LAUNCH_GAME));
+    gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(LANG_STR::DUMP_1));
+    gm_p_text[2] = fmt::format("{0:.20}", getLangSTR(LANG_STR::UNINSTALL));
+    gm_p_text[3] = fmt::format("{0:.20}", getLangSTR(LANG_STR::GAME_SAVE));
+    gm_p_text[4] = fmt::format("{0:.20}", getLangSTR(LANG_STR::TRAINERS));
+    gm_p_text[5] = fmt::format("{0:.20}", getLangSTR(LANG_STR::HIDE_APP_OPT));
+    gm_p_text[6] = fmt::format("{0:.20}", getLangSTR(LANG_STR::CHANGE_ICON));
+    gm_p_text[7] = fmt::format("{0:.20}", getLangSTR(LANG_STR::CHANGE_APP_NAME));
+    gm_p_text[8] = fmt::format("{0:.20}", getLangSTR(LANG_STR::MOVE_APP_OPT));
+    gm_p_text[9] = fmt::format("{0:.20}", getLangSTR(LANG_STR::RESTORE_APP_OPT));
 }
 // OVERWRITE_SAVE
 extern uint8_t lang_ini[];

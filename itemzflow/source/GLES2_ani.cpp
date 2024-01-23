@@ -16,19 +16,9 @@
 #include <string>
 #include <vector>
 
-extern texture_atlas_t *atlas;
-extern vertex_buffer_t *buffer;
-
 std::vector<struct _ent> cv;
 
-extern pthread_mutex_t notifcation_lock;
-
-// ------------------------------------------------------- typedef & struct ---
-typedef struct {
-    float x, y, z;    // position (3f)
-    float s, t;
-    float r, g, b, a; // color    (4f)
-} vertex_t;
+std::mutex notifcation_lock;
 
 extern GLuint btn_X;
 
@@ -40,23 +30,22 @@ int last_num = 0;
 static GLuint shader_fx  = 0; // text_ani.[vf]
 static float  g_Time     = 0.f;
 static GLuint meta_Slot  = 0;
-static mat4   model, view, projection;
+mat4   model_ani, view_ani, projection_ani;
 // ---------------------------------------------------------------- reshape ---
 static void reshape(int width, int height)
 {
     glViewport(0, 0, width, height);
-    mat4_set_orthographic( &projection, 0, width, 0, height, -1, 1);
+    mat4_set_orthographic( &projection_ani, 0, width, 0, height, -1, 1);
 }
 
 // ---------------------------------------------------------- animation ---
 static fx_entry_t *ani;          // the fx info
 
-static vertex_buffer_t *line_buffer,
-                       *vbo = NULL;
+static VertexBuffer line_buffer, vbo;
 
 // bool flag
 static bool ani_is_running = false;
-static NOTI_LEVELS level;
+static NOTIFI::NOTI_LEVELS  level;
 static GLuint game_noti = GL_NULL, warning_icon = GL_NULL, 
 Success_tex = GL_NULL, Info_tex = GL_NULL, kofi = GL_NULL, profile_pic = GL_NULL;
 // callback when done looping all effect status
@@ -68,7 +57,7 @@ static void ani_post_cb(void)
 #define MAX_QUEUE 10
 #define MAX_MESSAGES 12
 
-
+extern texture_atlas_t *atlas;
 int rear = -1;
 int front = -1;
 
@@ -81,7 +70,7 @@ static vec4 notify_rect, // x1,y1  x2,y2 in px
 
 static int max_width = 0;
 // ---------------------------------------------------------------- display ---
-static void render_ani(NOTI_LEVELS level, int text_num, int type_num )
+static void render_ani(NOTIFI::NOTI_LEVELS level, int text_num, int type_num )
 {
     // we already clean in main render loop!
 
@@ -118,11 +107,11 @@ static void render_ani(NOTI_LEVELS level, int text_num, int type_num )
 
     switch (level)
     {
-    case NOTIFI_INFO: //rgba = (vec4){ 0, 0, 0, 0.7 };
+    case NOTIFI::INFO: //rgba = (vec4){ 0, 0, 0, 0.7 };
        // break;
-    case NOTIFI_SUCCESS: //rgba = (vec4){ 0, 150, 0, 0.5 };
+    case NOTIFI::SUCCESS: //rgba = (vec4){ 0, 150, 0, 0.5 };
        // break;
-    case NOTIFI_ERROR://  rgba = (vec4){ 1, 0, 0, 0.3 };
+    case NOTIFI::ERROR://  rgba = (vec4){ 1, 0, 0, 0.3 };
        // rgba = (vec4){ 0, 0, 0, 0.7 };
        // break;
     default:
@@ -160,28 +149,30 @@ static void render_ani(NOTI_LEVELS level, int text_num, int type_num )
     }
     /* draw animated background rectangle */
     notify_rect.xz = rect.xy; // grab x1,x2
-    ORBIS_RenderFillRects(USE_COLOR, &rgba, &notify_rect, 1);
+    std::vector<vec4> rect_vec;
+    rect_vec.push_back(notify_rect);
+    ORBIS_RenderFillRects(USE_COLOR, rgba, rect_vec, 1);
 
     /* draw the icon */
     notify_icon.xz = rect.zw; // grab x1,x2
 
     switch (level)
     {
-    case NOTIFI_SUCCESS: on_GLES2_Render_icon(USE_COLOR, Success_tex/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+    case NOTIFI::SUCCESS: on_GLES2_Render_icon(USE_COLOR, Success_tex/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
                     break;
-    case NOTIFI_ERROR:  on_GLES2_Render_icon(USE_COLOR, btn_X/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+    case NOTIFI::ERROR:  on_GLES2_Render_icon(USE_COLOR, btn_X/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
                      break;
-    case NOTIFI_WARNING:  on_GLES2_Render_icon(USE_COLOR, warning_icon/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+    case NOTIFI::WARNING:  on_GLES2_Render_icon(USE_COLOR, warning_icon/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
         break;
-    case NOTIFI_GAME:  on_GLES2_Render_icon(USE_COLOR, game_noti/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+    case NOTIFI::GAME:  on_GLES2_Render_icon(USE_COLOR, game_noti/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
         break;
-    case NOTIFI_KOFI:  on_GLES2_Render_icon(USE_COLOR, kofi/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+    case NOTIFI::KOFI:  on_GLES2_Render_icon(USE_COLOR, kofi/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
         break;
-    case NOTIFI_PROFILE:  on_GLES2_Render_icon(USE_COLOR, profile_pic/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+    case NOTIFI::PROFILE:  on_GLES2_Render_icon(USE_COLOR, profile_pic/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
         break;
-    case NOTIFI_INFO:
+    case NOTIFI::INFO:
     default:
-        on_GLES2_Render_icon(USE_COLOR, Info_tex/*texnum*/, 2/*tex_unit*/, &notify_icon, NULL);
+        on_GLES2_Render_icon(USE_COLOR, Info_tex/*texnum*/, 2/*tex_unit*/, notify_icon, NULL);
         break;
     }
 
@@ -194,9 +185,9 @@ static void render_ani(NOTI_LEVELS level, int text_num, int type_num )
     glBlendFunc    ( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
     {
         glUniform1i       ( glGetUniformLocation( program, "texture" ),    0 );
-        glUniformMatrix4fv( glGetUniformLocation( program, "model" ),      1, 0, model.data);
-        glUniformMatrix4fv( glGetUniformLocation( program, "view" ),       1, 0, view.data);
-        glUniformMatrix4fv( glGetUniformLocation( program, "projection" ), 1, 0, projection.data);
+        glUniformMatrix4fv( glGetUniformLocation( program, "model" ),      1, 0, model_ani.data);
+        glUniformMatrix4fv( glGetUniformLocation( program, "view" ),       1, 0, view_ani.data);
+        glUniformMatrix4fv( glGetUniformLocation( program, "projection" ), 1, 0, projection_ani.data);
         glUniform4f       ( glGetUniformLocation( program, "meta"), 
                 ani->t_now,
                 ani->status /10., // we use float on SL, switching fx state
@@ -204,7 +195,8 @@ static void render_ani(NOTI_LEVELS level, int text_num, int type_num )
                 type_num    /10.);
         if(1) /* draw whole VBO (storing all added texts) */
         {
-            vertex_buffer_render( vbo, GL_TRIANGLES );
+           // vertex_buffer_render( vbo, GL_TRIANGLES );
+            vbo.render( GL_TRIANGLES);
         }
     }
     glDisable( GL_BLEND );
@@ -248,7 +240,7 @@ extern float tl;
 void GLES2_ani_init(int width, int height)
 {
     vec4 color  = { 200., 0., 200., 1. };
-    line_buffer = vertex_buffer_new( "vertex:3f,color:4f" );
+    line_buffer = VertexBuffer( "vertex:3f,color:4f" );
 
 #if 0 // rects
     vec2 pen = { .5, .5 };
@@ -350,7 +342,8 @@ for (int i = 0; i < 10; ++i)
         };
     GLuint indices [] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,
                          13,14,15,16,17,18,19,20,21,22,23,24,25 };
-    vertex_buffer_push_back( line_buffer, vertices, 26, indices, 26 );
+   // vertex_buffer_push_back( line_buffer, vertices, 26, indices, 26 );
+    line_buffer.push_back(vertices, 26, indices, 26);
 #endif
 
     /* shader program is custom, so
@@ -366,9 +359,9 @@ for (int i = 0; i < 10; ++i)
     ani->t_now  = 0.f;  // set actual time
     ani->t_life = 2.f;  // duration in seconds
 
-    mat4_set_identity( &projection );
-    mat4_set_identity( &model );
-    mat4_set_identity( &view );
+    mat4_set_identity( &projection_ani );
+    mat4_set_identity( &model_ani );
+    mat4_set_identity( &view_ani );
     // attach our "custom infos"
     meta_Slot = glGetUniformLocation(shader_fx, "meta");
 
@@ -400,7 +393,7 @@ void ani_reset(void)
     ani_is_running = false;
 }
 
-static void add_new_queue_item(NOTI_LEVELS lvl, std::string message, std::string detail) {
+static void add_new_queue_item(NOTIFI::NOTI_LEVELS  lvl, std::string message, std::string detail) {
 
     struct _ent tmp_cv;
     // fname 1 is message, 2 is detail
@@ -412,7 +405,7 @@ static void add_new_queue_item(NOTI_LEVELS lvl, std::string message, std::string
     // Append current queue
     cv.push_back(tmp_cv);
     // if controller dc msg, don't print alld etails
-    if(message != getLangSTR(CON_DIS)){
+    if(message != getLangSTR(LANG_STR::CON_DIS)){
        fmt::print("[ANI][NOTIFY] Message: {}", tmp_cv.fname);
        fmt::print("[ANI][NOTIFY] Detail: {}", tmp_cv.fname2);
        fmt::print("[ANI][NOTIFY] MSG LVL: {}", tmp_cv.lvl);
@@ -422,15 +415,14 @@ static void add_new_queue_item(NOTI_LEVELS lvl, std::string message, std::string
       log_info("Pad DC'ed");
 }
 // trigger start if not already flagged running
-int ani_notify(NOTI_LEVELS lvl, std::string message, std::string detail)
+int ani_notify(NOTIFI::NOTI_LEVELS lvl, std::string message, std::string detail)
 {
+    std::lock_guard<std::mutex> lock(notifcation_lock);
     // Check if message is empty
-    if ((message.empty() && detail.empty()) || lvl > NUM_OF_NOTIS) {
+    if ((message.empty() && detail.empty()) || lvl > NOTIFI::NUM_OF_NOTIS) {
         log_info("[ANI][NOTIFY] Message is EINVAL");
         return ITEMZCORE_EINVAL;
     }
-
-    pthread_mutex_lock(&notifcation_lock);
 
     int QueueTotal = cv.size();
 
@@ -438,18 +430,15 @@ int ani_notify(NOTI_LEVELS lvl, std::string message, std::string detail)
         log_info("[ANI][NOTIFY] Queue is full %i", cv.size());
         if (QueueTotal < MAX_MESSAGES) {
           //Fill new Queue item
-          add_new_queue_item(NOTIFI_ERROR, "Queue is Full", "Full");
+          add_new_queue_item(NOTIFI::ERROR, "Queue is Full", "Full");
         }
         else
             log_info("[ANI][NOTIFY] MAX_MESSAGES reached!");
 
-        pthread_mutex_unlock(&notifcation_lock);
         return ITEMZCORE_QUEUE_FULL;
     }
 
     add_new_queue_item(lvl, message, detail);
-
-    pthread_mutex_unlock(&notifcation_lock);
 
     return ITEMZCORE_SUCCESS;
 }
@@ -457,8 +446,7 @@ int ani_notify(NOTI_LEVELS lvl, std::string message, std::string detail)
 // draw one effect loop
 void GLES2_ani_draw(void)
 {
-
-    pthread_mutex_lock(&notifcation_lock);
+    std::lock_guard<std::mutex> lock(notifcation_lock);
 
     uint32_t entCt = cv.size();
 
@@ -473,15 +461,15 @@ void GLES2_ani_draw(void)
         }
         else {
             log_info("deleting vbo");
-            if (vbo) vertex_buffer_delete(vbo), vbo = NULL;
+            vbo.clear();
             ani_is_running = true;
 
-            level = (NOTI_LEVELS)cv.at(last_num).lvl;
+            level = (NOTIFI::NOTI_LEVELS )cv.at(last_num).lvl;
 
             if (!vbo) // build text message
             {
                 max_width = 0;
-                vbo = vertex_buffer_new("vertex:3f,tex_coord:2f,color:4f");
+                vbo = VertexBuffer("vertex:3f,tex_coord:2f,color:4f");
                 texture_font_load_glyphs(sub_font, cv.at(last_num).fname.c_str()); // set textures, update 'tl'
                 if (tl > max_width) max_width = tl;
 
@@ -489,7 +477,7 @@ void GLES2_ani_draw(void)
                 // text position, 1st line
                 vec2 pen = (vec2){ 100, 905 };
 
-                add_text(vbo, sub_font, cv.at(last_num).fname, &col, &pen);  // set vertexes
+                vbo.add_text(sub_font, cv.at(last_num).fname, col, pen);  // set vertexes
                 if (!cv.at(last_num).fname2.empty()) // second line
                 {
                     pen.x = 100,
@@ -497,13 +485,11 @@ void GLES2_ani_draw(void)
                     texture_font_load_glyphs(main_font, cv.at(last_num).fname2.c_str()); // set textures, update 'tl'
                     if (tl > max_width) max_width = tl;
 
-                    add_text(vbo, main_font, cv.at(last_num).fname2, &col, &pen);  // set vertexes
+                    vbo.add_text(main_font, cv.at(last_num).fname2, col, pen);  // set vertexes
                 }
                 refresh_atlas();
                 last_num++;
             }
         }
     }
-
-    pthread_mutex_unlock(&notifcation_lock);
 }

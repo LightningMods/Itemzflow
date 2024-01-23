@@ -14,20 +14,37 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <memory>
 #include <user_mem.h>
 
 namespace pkg {
 std::string get_entry_name_by_type(uint32_t type) {
   std::stringstream ss;
 
-  if (type == 0x0400) {
+  if (type == 0x0001) {
+    ss << ".digests";
+  } else if (type == 0x0010) {
+    ss << ".entry_keys";
+  } else if (type == 0x0020) {
+    ss << ".image_key";
+  } else if (type == 0x0021) {
+    ss << ".unknown_0x21";
+  } else if (type == 0x0080) {
+    ss << ".general_digests";
+  } else if (type == 0x00C0) {
+    ss << ".unknown_0xC0";
+  } else if (type == 0x0100) {
+    ss << ".metas";
+  } else if (type == 0x0200) {
+    ss << ".entry_names";
+  } else if (type == 0x0400) {
     ss << "license.dat";
   } else if (type == 0x0401) {
     ss << "license.info";
   } else if (type == 0x0402) {
-    ss << "nptitle.dat.encrypted";
+    ss << "nptitle.dat";
   } else if (type == 0x0403) {
-    ss << "npbind.dat.encrypted";
+    ss << "npbind.dat";
   } else if (type == 0x0404) {
     ss << "selfinfo.dat";
   } else if (type == 0x0406) {
@@ -93,7 +110,7 @@ std::string get_entry_name_by_type(uint32_t type) {
   } else if ((type >= 0x12C1) && (type <= 0x12DF)) {
     ss << "pic1_" << std::setfill('0') << std::setw(2) << type - 0x12C1 << ".dds";
   } else if ((type >= 0x1400) && (type <= 0x147F)) {
-    ss << "trophy/trophy" << std::setfill('0') << std::setw(2) << type - 0x1400 << ".trp.encrypted";
+    ss << "trophy/trophy" << std::setfill('0') << std::setw(2) << type - 0x1400 << ".trp";
   } else if ((type >= 0x1600) && (type <= 0x1609)) {
     ss << "keymap_rp/" << std::setfill('0') << std::setw(3) << type - 0x15FF << ".png";
   } else if ((type >= 0x1610) && (type <= 0x16F5)) {
@@ -107,6 +124,7 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
   // Check for empty or pure whitespace path
   if (pkg_path.empty() || std::all_of(pkg_path.begin(), pkg_path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty input path argument!");
+    return false;
   }
 
   // Check if file exists and is file
@@ -120,6 +138,7 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
   if (!pkg_input || !pkg_input.good()) {
     pkg_input.close();
     log_error("Cannot open input file: %s" ,pkg_path.c_str());
+    return false;
   }
 
   // Check file magic (Read in whole header)
@@ -170,23 +189,18 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
   // Extract sc0 entries
   for (auto &&entry : entries) {
     std::string entry_name = get_entry_name_by_type(__builtin_bswap32(entry.id));
-    if (entry_name.empty()){//is_PKG_entry_needed(entry_name)) {
+    if (!entry_name.empty()){//is_PKG_entry_needed(entry_name)) {
+      bool entry_encrpyted((__builtin_bswap32(entry.flags1) & 0x80000000) != 0);
+      uint32_t entry_key_index = (__builtin_bswap32(entry.flags2) & 0xF000) >> 12;
       std::filesystem::path temp_output_path(output_path);
       temp_output_path /= entry_name;
 
       pkg_input.seekg(__builtin_bswap32(entry.offset), pkg_input.beg);
-      char* buf = (char*)malloc(__builtin_bswap32(entry.size));
-      if (buf != nullptr)
-      {
-          pkg_input.read(buf, __builtin_bswap32(entry.size)); // Flawfinder: ignore
-          if (!pkg_input.good()) {
-              pkg_input.close();
-              log_error("Error reading entry data!");
-              return false;
-          }
-      }
-      else {
-          log_error("buf null\n");
+      std::unique_ptr<char[]> buf = std::make_unique<char[]>(__builtin_bswap32(entry.size));
+      pkg_input.read(buf.get(), __builtin_bswap32(entry.size)); // Flawfinder: ignore
+      if (!pkg_input.good()) {
+          pkg_input.close();
+          log_error("Error reading entry data!");
           return false;
       }
 
@@ -204,6 +218,14 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
         log_error("Unable to open/create output subdirectory");
       }
 
+      if (entry_encrpyted) {
+        // Only have key at index 3
+        if (entry_key_index == 3) {
+          // TODO: Decrypt and save as `temp_output_path`
+        }
+        temp_output_path += ".encrypted";
+      }
+
 
       // Write to file
       //unlink anyways idc
@@ -211,7 +233,7 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
       int fd = open(temp_output_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0777);
       if (fd >= 0) {
 
-          write(fd, buf, __builtin_bswap32(entry.size));
+          write(fd, buf.get(), __builtin_bswap32(entry.size));
           close(fd);
       }
       else {
@@ -220,9 +242,6 @@ bool extract_sc0(const std::string &pkg_path, const std::string &output_path, co
           pkg_input.close();
           return false;
       }
-
-      
-      free(buf);
 
     }
   }

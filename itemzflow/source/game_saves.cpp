@@ -39,6 +39,7 @@ uint32_t bswap_32(uint32_t val) {
 // 3. key_table.content (with trailing 4-byte alignment)
 // 4. data_table.content
 
+using namespace multi_select_options;
 struct header {
     uint32_t magic;
     uint32_t version;
@@ -467,7 +468,8 @@ const orbis_patch_t shellcore_lnc_debug_505[] = {
     {0, NULL, 0}
 };
 
-/*const orbis_patch_t shellcore_trophy_505[] = {
+/*
+const orbis_patch_t shellcore_trophy_505[] = {
     {0x03ECEBF, (char*)"\x90\x90\x90\x90\x90\x90", 6},
     {0, NULL, 0}
 };
@@ -1060,13 +1062,13 @@ bool patch_lnc_debug()
 {
     if (!check_syscalls())
     {
-        ani_notify(NOTIFI_WARNING, getLangSTR(NO_GOLDHEN), "");
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_GOLDHEN), "");
         return false;
     }
 
     if (!patch_SceShellCore(shellcore_lnc_debug_505))
     {
-        ani_notify(NOTIFI_WARNING, getLangSTR(FAILED_SAVE_PATCHES), "");
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_SAVE_PATCHES), "");
         return false;
     }
 
@@ -1121,19 +1123,19 @@ bool patch_save_libraries()
         break;
 
     default:
-        ani_notify(NOTIFI_WARNING, getLangSTR(UNSUPPORTED_FW), fmt::format("{0:}: {1:#x}", getLangSTR(UNSUPPORTED_FW), version >> 8));
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::UNSUPPORTED_FW), fmt::format("{0:}: {1:#x}", getLangSTR(LANG_STR::UNSUPPORTED_FW), version >> 8));
         return false;
     }
 
     if (!check_syscalls())
     {
-        ani_notify(NOTIFI_WARNING, getLangSTR(NO_GOLDHEN), "");
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_GOLDHEN), "");
         return false;
     }
 
     if (!patch_SceShellCore(shellcore_patch) || !patch_SceSaveData(savedata_patch))
     {
-        ani_notify(NOTIFI_WARNING, getLangSTR(FAILED_SAVE_PATCHES), "");
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_SAVE_PATCHES), "");
         return false;
     }
 
@@ -1386,17 +1388,17 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
     
     int saves = (sv == RESTORE_GAME_SAVE) ? 1 : gm_save.numb_of_saves;
 
-    loadmsg(getLangSTR(SAVE_OP_ON_GOING));
+    loadmsg(getLangSTR(LANG_STR::SAVE_OP_ON_GOING));
     //Check to see if its a devkit or testkit filesystem
     //only Backing up saves works with devkit modules
     if (sv != BACKUP_GAME_SAVE && if_exists("/system/sys/set_upper.self")) {
-        ani_notify(NOTIFI_WARNING, getLangSTR(UNSUPPORTED_FS), getLangSTR(RETAILO));
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::UNSUPPORTED_FS), getLangSTR(LANG_STR::RETAILO));
         sceMsgDialogTerminate();
         return;
     }
     if (sv < RESTORE_GAME_SAVE) {
         if (usbpath() == -1) {
-            ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(NO_USB));
+            ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::SAVE_OPS_FAILED), getLangSTR(LANG_STR::NO_USB));
             sceMsgDialogTerminate();
             return;
         }
@@ -1416,11 +1418,11 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
         }
         
         if (saves <= 0 && sv != RESTORE_GAME_SAVE) {
-                ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
+                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_SAVES), getLangSTR(LANG_STR::CANT_FIND_SAVE));
                 goto unpatch;
         }
         if (sceSaveDataInitialize3(0) != ITEMZCORE_SUCCESS){
-                ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(FAILED_INI_SD));
+                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::SAVE_OPS_FAILED), getLangSTR(LANG_STR::FAILED_INI_SD));
                 goto unpatch;
         }
         for (int j = 0; j < saves; j++) {
@@ -1434,14 +1436,14 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
             if(sv != RESTORE_GAME_SAVE){
                log_info("Save Data Operations :: %d %d %d %s", sv, saves, (sv == DELETE_GAME_SAVE) ? 0 : j, save.dir_name.c_str());
                if (!GameSave_Info(&save, (sv == DELETE_GAME_SAVE) ? 0 : j)) {
-                   ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
+                   ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_SAVES), getLangSTR(LANG_STR::CANT_FIND_SAVE));
                    goto unpatch;
                 }
             }
             else if(sv == RESTORE_GAME_SAVE){
                 dest = fmt::format("{}/sce_sys/param.sfo", path);
                 if (!if_exists(dest.c_str()) || !is_sfo(dest.c_str())) {
-                   ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
+                   ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_SAVES), getLangSTR(LANG_STR::CANT_FIND_SAVE));
                    goto unpatch;
                 } 
 
@@ -1449,7 +1451,7 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
                 save.blocks = -1;
                 //ini sets blocks
                 if(sfo_data.empty() || !get_save_details(sfo_data, save)){
-                   ani_notify(NOTIFI_WARNING, getLangSTR(NO_SAVES), getLangSTR(CANT_FIND_SAVE));
+                   ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_SAVES), getLangSTR(LANG_STR::CANT_FIND_SAVE));
                    goto unpatch;
                 } 
 
@@ -1458,12 +1460,12 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
                 save_flag =  ORBIS_SAVE_DATA_MOUNT_MODE_RDWR | ORBIS_SAVE_DATA_MOUNT_MODE_CREATE2 | ORBIS_SAVE_DATA_MOUNT_MODE_COPY_ICON;
                 // see if the dir_name (save) is already exists
                 if(If_Save_Exists(tmp.c_str(), &save)){
-                   if(Confirmation_Msg(getLangSTR(OVERWRITE_SAVE)) ==  YES){
+                   if(Confirmation_Msg(getLangSTR(LANG_STR::OVERWRITE_SAVE)) ==  YES){
                       orbis_SaveDelete(&save);
                    }
                    else{
                       log_debug("Save overwrite cancelled");
-                      ani_notify(NOTIFI_WARNING, getLangSTR(OP_CANNED), getLangSTR(OP_CANNED_1));
+                      ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OP_CANNED), getLangSTR(LANG_STR::OP_CANNED_1));
                       goto unpatch;
                    }
                 }
@@ -1471,7 +1473,7 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
 
             if (sv != DELETE_GAME_SAVE) {
                 if (!orbis_SaveMount(&save, save_flag, mount)) {
-                    ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(FAILED_MOUNT_SD));
+                    ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::SAVE_OPS_FAILED), getLangSTR(LANG_STR::FAILED_MOUNT_SD));
                     log_error("Error! Failed to mount save data!");
                     goto unpatch;
                 }
@@ -1495,25 +1497,25 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
 
                 fmt::print("Copying save data to {0:}", dest);
 
-                if (!copy_dir((char*)save.path.c_str(), (char*)dest.c_str())){
-                     ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(SD_TRANSFER_FAIL));
+                if (!copy_dir(save.path, dest)){
+                     ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::SAVE_OPS_FAILED), getLangSTR(LANG_STR::SD_TRANSFER_FAIL));
                      break;
                 }
 
-                ani_notify(NOTIFI_GAME, getLangSTR(SD_SAVED), fmt::format("{0:d}/{1:d}", j+1, saves));
+                ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::SD_SAVED), fmt::format("{0:d}/{1:d}", j+1, saves));
 
                 break;
             }
             case DELETE_GAME_SAVE: {
 
                 if(orbis_SaveDelete(&save)){
-                    ani_notify(NOTIFI_GAME, getLangSTR(SD_DELETED), fmt::format("{0:} ({1:d}/{2:d})", save.title_id, j+1, saves));
+                    ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::SD_DELETED), fmt::format("{0:} ({1:d}/{2:d})", save.title_id, j+1, saves));
                     //1 less save for the UI
                     gm_save.is_loaded = false;
                     gm_save.numb_of_saves--;
                 }
                 else
-                    ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), getLangSTR(CANT_DELETE_SD));
+                    ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::SAVE_OPS_FAILED), getLangSTR(LANG_STR::CANT_DELETE_SD));
 
                 break; 
             }
@@ -1522,18 +1524,18 @@ void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path)
                 tmp2 = fmt::format("/mnt/sandbox/ITEM00001_000{0:}/", mount);
                 fmt::print("Copying save data to {0:} {1:}", tmp2, dest);
 
-	            if(!copy_dir((char*)path.c_str(), (char*)tmp2.c_str())) goto restore_error;
+	            if(!copy_dir(path, tmp2)) goto restore_error;
 
 	            if(!_update_save_details(mount, path, &save)) goto restore_error;
                 
                 if((gm_save.is_loaded = GameSave_Info(&gm_save, gm_save.numb_of_saves))){
-                   dest = fmt::format("{0:}: {1:}", getLangSTR(SAVE_IMPORT_2), gm_save.main_title);
-                   ani_notify(NOTIFI_GAME, getLangSTR(SAVE_IMPORTED), dest);
+                   dest = fmt::format("{0:}: {1:}", getLangSTR(LANG_STR::SAVE_IMPORT_2), gm_save.main_title);
+                   ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::SAVE_IMPORTED), dest);
                    break;
                 }
 
 restore_error:
-                ani_notify(NOTIFI_WARNING, getLangSTR(RESTORE_FAILED), getLangSTR(SAVE_OPS_FAILED));
+                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::RESTORE_FAILED), getLangSTR(LANG_STR::SAVE_OPS_FAILED));
                 break;
             }
             default:
@@ -1550,8 +1552,8 @@ restore_error:
     }
     else {
         log_info("%x", ret);
-        dest = fmt::format("{0:}: {1:#x}", getLangSTR(NO_USERID), ret);
-        ani_notify(NOTIFI_WARNING, getLangSTR(SAVE_OPS_FAILED), dest);
+        dest = fmt::format("{0:}: {1:#x}", getLangSTR(LANG_STR::NO_USERID), ret);
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::SAVE_OPS_FAILED), dest);
     }
 
 unpatch:

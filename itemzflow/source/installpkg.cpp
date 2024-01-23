@@ -9,7 +9,7 @@ extern std::string tmp;
 
 int PKG_ERROR(const char* name, int ret)
 {
-    msgok(WARNING, fmt::format("{0:}\nHEX: {1:#x} Int: {2:d}\n{3:}", getLangSTR(INSTALL_FAILED), ret, ret, name));
+    msgok(MSG_DIALOG::WARNING, fmt::format("{0:}\nHEX: {1:#x} Int: {2:d}\n{3:}", getLangSTR(LANG_STR::INSTALL_FAILED), ret, ret, name));
     log_error( "%s error: %x", name, ret);
 
     return ret;
@@ -195,15 +195,15 @@ void *install_prog(void* argument)
     SceBgftTaskProgress progress_info;
     bool is_threaded = args->is_thread;
 
-    tmp = fmt::format("{0:.60}\n\n{1:}", args->fname, getLangSTR(INSTALLING));
+    tmp = fmt::format("{0:.60}\n\n{1:}  {2:d}/{3:d}", args->fname, getLangSTR(LANG_STR::INSTALLING), args->curr_pkg, args->max_pkgs);
 
     if (!is_threaded)
-       progstart((char*)tmp.c_str());
+       progstart(tmp.c_str());
    else
        log_info("Starting PKG Install");
 
     int prog = 0;
-    while (prog < 99)
+    while (prog < 100)
     {
         memset(&progress_info, 0, sizeof(progress_info));
 
@@ -239,8 +239,10 @@ void *install_prog(void* argument)
 
     if (progress_info.error_result == 0) {
       if (!is_threaded) {
+        if(args->curr_pkg >= args->max_pkgs)
            sceMsgDialogTerminate();
-            ani_notify(NOTIFI_GAME, getLangSTR(PKG_INST_SUCCESS), fmt::format("{0:}", args->title_id));
+
+        ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::PKG_INST_SUCCESS), fmt::format("{0:}", args->title_id));
       }
       if(args->delete_pkg)
            unlink(args->path);
@@ -248,8 +250,8 @@ void *install_prog(void* argument)
     else {
         if (!is_threaded) {
             sceMsgDialogTerminate();
-            ani_notify(NOTIFI_WARNING, getLangSTR(PKG_INST_FAILED),fmt::format("{0:#x}", progress_info.error_result));
-            msgok(WARNING, fmt::format("{0:} {1:} {2:} {3:#X}", getLangSTR(INSTALL_OF), args->title_id, getLangSTR(INSTALL_FAILED), progress_info.error_result));
+            ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::PKG_INST_FAILED),fmt::format("{0:#x}", progress_info.error_result));
+            msgok(MSG_DIALOG::WARNING, fmt::format("{0:} {1:} {2:} {3:#X}", getLangSTR(LANG_STR::INSTALL_OF), args->title_id, getLangSTR(LANG_STR::INSTALL_FAILED), progress_info.error_result));
         }
         else
             log_error("Installation of %s has failed with code 0x%x", args->title_id, progress_info.error_result);
@@ -269,11 +271,12 @@ void *install_prog(void* argument)
 }
 
 uint32_t pkginstall(const char *fullpath, const char* filename, 
-bool Show_install_prog, bool delete_pkg_after)
+bool Show_install_prog, bool delete_pkg_after, int max_pkgs, int curr_pkg )
 {
     char title_id[16];
     int  is_app, ret = -1;
     int  task_id = -1;
+    bool is_app_exists = false;
     std::string tmp;
 
     if( if_exists(fullpath) )
@@ -293,6 +296,9 @@ bool Show_install_prog, bool delete_pkg_after)
         ret = sceAppInstUtilGetTitleIdFromPkg(fullpath, title_id, &is_app);
         if (ret) 
             return PKG_ERROR("sceAppInstUtilGetTitleIdFromPkg", ret);
+
+        if(pkg_is_patch(fullpath) && app_inst_util_is_exists(title_id, &is_app_exists) && !is_app_exists)
+            return PKG_ERROR("BASE_GAME_NOT_INSTALLED", ret);
 
 
         tmp = fmt::format("ItemzFlow: {}", title_id);
@@ -316,7 +322,7 @@ bool Show_install_prog, bool delete_pkg_after)
         ret = sceBgftServiceIntDownloadRegisterTaskByStorageEx(&download_params, &task_id);
         if(ret == 0x80990088 || ret == 0x80990015)
         {
-            if(Confirmation_Msg(getLangSTR(REINSTALL_APP_CONFIRMATION)) == YES){
+            if(Confirmation_Msg(getLangSTR(LANG_STR::REINSTALL_APP_CONFIRMATION)) == YES){
                ret = sceAppInstUtilAppUnInstall(&title_id[0]);
                if(ret != 0)
                   return PKG_ERROR("sceAppInstUtilAppUnInstall", ret);
@@ -348,6 +354,8 @@ bool Show_install_prog, bool delete_pkg_after)
     args->fname = strdup(filename);
     args->is_thread = !Show_install_prog;
     args->delete_pkg = delete_pkg_after;
+    args->max_pkgs = max_pkgs;
+    args->curr_pkg = curr_pkg;
 
     if (Show_install_prog){
         install_prog((void*)args);

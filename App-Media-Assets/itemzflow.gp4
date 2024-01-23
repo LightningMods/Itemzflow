@@ -17,6 +17,8 @@
     <file targ_path="sce_sys/icon0.png" orig_path="sce_sys/icon0.png" />
     <file targ_path="sce_sys/param.sfo" orig_path="sce_sys/param.sfo" />
     <file targ_path="assets/notis/error.png" orig_path="assets/notis/error.png" />
+	<file targ_path="assets/debug_item_icon.png" orig_path="assets/debug_item_icon.png" />
+	<file targ_path="assets/heart.png" orig_path="assets/heart.png" />
     <file targ_path="assets/notis/game.png" orig_path="assets/notis/game.png" />
     <file targ_path="assets/notis/game_usb.png" orig_path="assets/notis/game_usb.png" />
     <file targ_path="assets/notis/info.png" orig_path="assets/notis/info.png" />

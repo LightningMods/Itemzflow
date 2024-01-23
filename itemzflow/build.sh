@@ -1,1 +1,1 @@
-cd ../libyaml-cpp  && make -j24 && make install && cd ../libdumper/  && make -j24 && make install && cd ../itemz-daemon/ && make clean && make -j24 && make oelf && make eboot && cd ../itemzflow/ && make clean && make -j24 && make oelf && make eboot
+cd ../libyaml-cpp  && make -j24 && make install && cd ../libdumper/  && make -j24 && make install && cd ../itemz-daemon/ && make clean && make -j24 && make oelf && make eboot && cd ../itemzflow/ && make clean && make -j24 && make oelf && make eboot && make pkg_build 

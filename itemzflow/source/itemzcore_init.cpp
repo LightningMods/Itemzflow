@@ -15,7 +15,7 @@
 #include <sqlite3.h>
 #include <signal.h>
 #include <sys/mount.h>
-extern Dump_Multi_Sels dump;
+extern multi_select_options::Dump_Multi_Sels dump;
 extern std::vector<std::string> gm_p_text;
 #if defined (__ORBIS__)
 
@@ -167,7 +167,7 @@ extern vertex_buffer_t* text_buffer[4];
 extern dl_arg_t* pt_info;
 // available num of jsons
 int json_c = 0;
-std::vector<item_t> all_apps;
+ThreadSafeVector<item_t> all_apps;
 
 // common title in different panels
 GLuint fallback_t = 0;  // fallback texture
@@ -177,27 +177,28 @@ GLuint fallback_t = 0;  // fallback texture
 extern bool use_reflection,
 use_pixelshader;
 
-int layout_fill_item_from_list(layout_t *l, std::vector<std::string> &i_list)
+
+int layout_fill_item_from_list(layout_t & l, std::vector<std::string> &i_list)
 {
     int i, count = 0;
-    log_debug("layout_fill_item_from_list size: %d", i_list.size());
-    l->item_d = std::vector<item_t>(l->item_c);
+    l.item_d = ThreadSafeVector<item_t>(l.item_c);
 
-    for (i = 0; i < l->item_c; i++) // iterate item_d
+    for (i = 0; i < l.item_c; i++) // iterate item_d
     {   // dynallocs each token_d
-        l->item_d[i].token_c = 1;
+        l.item_d[i].count.token_c = 1;
+//        log_info("i_list[%i] = %s", i, i_list[i]);
         // we use just the first token_d
-        l->item_d[i].name = i_list.at(i);
+        l.item_d[i].info.name = i_list.at(i);
         if (1)
         {
             //token->len = strlen( i_list[i] );
             count += 1;
-            log_debug("%s, %s, %d", __FUNCTION__, l->item_d[i].name.c_str(), count);
+            log_debug("%s, %s, %d", __FUNCTION__, l.item_d[i].info.name.c_str(), count);
         }
     }
 
     /* update */
-    l->item_c = count;      // layout items count
+    l.item_c = count;      // layout items count
     layout_update_fsize(l); // and the field_size
 
     return count;
@@ -216,17 +217,17 @@ void init_ItemzCore(int w, int h)
         grey = (vec4){ 66,  66,  66, 256 } / 256; // fg
 
     /* first, scan folder, populate Installed_Apps */
-    loadmsg(getLangSTR(LOADING_GAME_LIST));
+    loadmsg(getLangSTR(LANG_STR::LOADING_GAME_LIST));
     // build an array of indexes for each one entry there
     mkdir("/user/app/", 0777);
     // avoid non existent path issues
     mkdir("/user/data/GoldHEN/", 0777);
     mkdir("/user/data/GoldHEN/patches/", 0777);
     mkdir("/user/data/GoldHEN/patches/settings/", 0777);
-    mkdir("/user/data/GoldHEN/patches/json/", 0777);
+    mkdir("/user/data/GoldHEN/patches/xml/", 0777);
     log_info("Searching for Apps");
 
-    index_items_from_dir(all_apps, "/user/app", "/mnt/ext0/user/app", NO_CATEGORY_FILTER);
+    index_items_from_dir(all_apps, APP_PATH("../"), "/mnt/ext0/user/app", NO_CATEGORY_FILTER);
 
     // setup one for all missing, the fallback icon0
     if (!fallback_t)
@@ -246,7 +247,7 @@ void init_ItemzCore(int w, int h)
     ORBIS_RenderFillRects_init(w, h);
     // init ttf fonts
     GLES2_fonts_from_ttf(get->setting_strings[FNT_PATH].c_str());
-    // init ani_notify()
+    // init ani_notify(NOTIFI::)
     GLES2_ani_init(w, h);
     // fragments shaders, effects etc
     pixelshader_init(w, h);
@@ -256,7 +257,7 @@ void init_ItemzCore(int w, int h)
     InitScene_4(w, h);
     InitScene_5(w, h);
 
-    if(get->sort_by != NA_SORT){
+    if(get->sort_by != multi_select_options::NA_SORT){
        log_info("Sorting by %d", get->sort_by);
        refresh_apps_for_cf(get->sort_by, get->sort_cat);
     }
@@ -264,17 +265,15 @@ void init_ItemzCore(int w, int h)
 }
 
 
-void GLES2_UpdateVboForLayout(layout_t* l)
+void GLES2_UpdateVboForLayout(layout_t& l)
 {
-    if (l)
-    {   // skip until we ask to refresh VBO
-        if (l->vbo_s < ASK_REFRESH) return;
-
-        if (l->vbo) vertex_buffer_delete(l->vbo), l->vbo = NULL;
-
-        l->vbo_s = EMPTY;
-    }
+   // skip until we ask to refresh VBO
+   if (l.vbo_s < ASK_REFRESH) return;
+   l.vbo .clear();
+   l.vbo_s = EMPTY;
+    
 }
+
 
 void O_action_dispatch(void)
 {
@@ -282,30 +281,35 @@ void O_action_dispatch(void)
 }
 
 
-bool init_daemon_services(bool redirect)
-{
-    char IPC_BUFFER[100];
 
-    get->ItemzDaemon_AppId = sceLncUtilGetAppId((char*)"ITEM00002");
+bool init_daemon_services(bool redirect) {
+
+    IPC_Client& ipc = IPC_Client::getInstance();
+    std::string IPC_BUFFER;
+    IPC_Ret error = IPC_Ret::INVALID;
+    int wait = 0;
+
+    get->ItemzDaemon_AppId = sceLncUtilGetAppId((char*)"ITEM00002");  
+
     //Launch Daemon with silent    
     if ((get->ItemzDaemon_AppId & ~0xFFFFFF) != 0x60000000) {
         log_error("Daemon not launched: error %x", get->ItemzDaemon_AppId);
         return false;
-    }
-    else
+    } else {
         log_info("Found Daemon AppId: %x", get->ItemzDaemon_AppId);
+    }
 
-    loadmsg(getLangSTR(WAITING_FOR_DAEMON));
-    int error = INVALID, wait = INVALID;
+    loadmsg(getLangSTR(LANG_STR::WAITING_FOR_DAEMON));
+
     // Wait for the Daemon to respond
-    do {
+    do { 
+        error = ipc.IPCSendCommand(IPC_Commands::CONNECTION_TEST, IPC_BUFFER);
+        log_info("[ItemzDaemon] Status: %s", error == IPC_Ret::INVALID ? "Failed to Connect" : "Success");
 
-        error = IPCSendCommand(CONNECTION_TEST, (uint8_t*)&IPC_BUFFER[0]);
-        log_info("[ItemzDaemon] Status: %s", error == INVALID ? "Failed to Connect" : "Success");
-        if (error == NO_ERROR) {
+        if (error == IPC_Ret::NO_ERROR) {
             sceMsgDialogTerminate();
             log_debug(" Took the Daemon %i extra commands attempts to respond", wait);
-            is_connected_app = true;
+            is_connected_app = true;  // You should declare and define 'is_connected_app' somewhere
         }
 
         if (wait >= 60)
@@ -314,35 +318,33 @@ bool init_daemon_services(bool redirect)
         sleep(1);
         wait++;
 
-     //File Flag the Daemon creates when initialization is complete
-    // and the Daemon IPC server is active
-    } while (error == INVALID);
+        // File Flag the Daemon creates when initialization is complete
+        // and the Daemon IPC server is active
+    } while (error == IPC_Ret::INVALID);
 
-    if (is_connected_app)
-    {
-        if (redirect) // is setting get->HomeMenu_Redirection enabled
-        {
+    sceMsgDialogTerminate();
+
+    if (is_connected_app) {  // You should declare and define 'is_connected_app' somewhere
+        if (redirect) {  // is setting get->HomeMenu_Redirection enabled
             log_info("Redirect on with app connected");
 
-            error = IPCSendCommand(ENABLE_HOME_REDIRECT, (uint8_t*)&IPC_BUFFER[0]);
-            if (error == NO_ERROR)
+            error = ipc.IPCSendCommand(IPC_Commands::ENABLE_HOME_REDIRECT, IPC_BUFFER);
+            if (error == IPC_Ret::NO_ERROR) {
                 log_debug(" HOME MENU REDIRECT IS ENABLED");
-            else {
+            } else {
                 log_debug("[ItemzDaemon][ERROR] Home menu redirect failed");
                 return false;
             }
         }
-    }
-    else
+    } else {
         return false;
+    }
 
     return true;
-
 }
 
 
-
-int Start_IF_internal_Services(int reboot_num)
+int Start_IF_internal_Services(const char* launch_q)
 {
     int ret = 0;
     unlink(ITEMZ_LOG);
@@ -358,8 +360,8 @@ int Start_IF_internal_Services(int reboot_num)
 
     generate_build_time();
 
-    log_info("------------------------ Itemzflow Compiled Time: %s @ %s  -------------------------", __DATE__, __TIME__);
-    log_info("---------------------------  Itemzflow Version: %s Num of Reboots: %i----------------------------", completeVersion.c_str(), reboot_num);
+    log_info("------------------ Itemzflow Compiled Time: %s @ %s  LQ: %s -------------------------", __DATE__, __TIME__, launch_q == NULL || strlen(launch_q) < 1 ? "No Launch Query (LQ) provided" : launch_q);
+    log_info("---------------------------  Itemzflow Version: %s FW: 0%X ----------------------------", completeVersion.c_str(), ps4_fw_version() >> 16);
 
     get = &set;
 
@@ -447,10 +449,13 @@ int Start_IF_internal_Services(int reboot_num)
     mkdir("/user/app/ITEM00001/covers", 0777);//
     mkdir("/user/app/ITEM00001/custom_app_names", 0777);
 
+    if(if_exists("/mnt/ext0/user/app/ITEM00001/app.pkg")){
+       msgok(MSG_DIALOG::FATAL, "Itmezflow is not designed to be installed on external storage. Please install it on internal storage and try again.");
+    }
 
     log_info("Loading Settings... ");
     if (!LoadOptions(get)) 
-        msgok(WARNING, getLangSTR(INI_ERROR));
+        msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::INI_ERROR));
     else
         log_info("Loaded Settings");
 
@@ -478,7 +483,7 @@ int Start_IF_internal_Services(int reboot_num)
         int BigAppid = sceSystemServiceGetAppIdOfBigApp();
         if ((BigAppid & ~0xFFFFFF) == 0x60000000) {
             log_info("FOUND Open Game: %x : Bool: %d", BigAppid, (BigAppid & ~0xFFFFFF) == 0x60000000);
-            gm_p_text[0] = getLangSTR(CLOSE_GAME);
+            gm_p_text[0] = getLangSTR(LANG_STR::CLOSE_GAME);
         }
         else
             log_info("No Open Games detected");
@@ -487,23 +492,23 @@ int Start_IF_internal_Services(int reboot_num)
         {
             log_info("Starting Daemon... ");
             if (!init_daemon_services(get->setting_bools[HomeMenu_Redirection]))
-                ani_notify(NOTIFI_WARNING, getLangSTR(FAILED_DAEMON), getLangSTR(DAEMON_OFF2));
+                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_DAEMON), getLangSTR(LANG_STR::DAEMON_OFF2));
             else
                 log_debug(" The Itemzflow init_daemon_services succeeded.");
         }
        else
-           ani_notify(NOTIFI_WARNING, getLangSTR(DAEMON_OFF), getLangSTR(DAEMON_OFF2));
+           ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::DAEMON_OFF), getLangSTR(LANG_STR::DAEMON_OFF2));
 
         if(MP3_Player(get->setting_strings[MP3_PATH]) != MP3_STATUS_ERROR)
-            ani_notify(NOTIFI_SUCCESS, getLangSTR(MP3_PLAYING), getLangSTR(MP3_LOADED));
+            ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::MP3_PLAYING), getLangSTR(LANG_STR::MP3_LOADED));
 
         sceMsgDialogTerminate();
     }
     else {
 #ifndef HAVE_SHADER_COMPILER 
-         msgok(FATAL, fmt::format("{} {}\nPS4 Path: /system/common/lib/libScePigletv2VSH.sprx", ret, getLangSTR(PIG_FAIL)));
+         msgok(MSG_DIALOG::FATAL, fmt::format("{} {}\nPS4 Path: /system/common/lib/libScePigletv2VSH.sprx", ret, getLangSTR(LANG_STR::PIG_FAIL)));
 #else
-         msgok(FATAL, "HAS_SHADER_COMP: Piglet (custom) failed to load with 0x%x\nPiglet Path: /data/piglet.sprx, Compiler Path: /data/compiler.sprx", s_piglet_module);
+         msgok(MSG_DIALOG::FATAL, "HAS_SHADER_COMP: Piglet (custom) failed to load with 0x%x\nPiglet Path: /data/piglet.sprx, Compiler Path: /data/compiler.sprx", s_piglet_module);
 #endif
          return INIT_FAILED;
     }
@@ -512,8 +517,10 @@ int Start_IF_internal_Services(int reboot_num)
     check_for_update_file(); 
 
     //dont_show_donate_message
-    if (!if_exists("/user/app/ITEM00001/support.flag"))
-        ani_notify(NOTIFI_KOFI, getLangSTR(CONSIDER_SUPPORT), "https://ko-fi.com/lightningmods");
+    if (!if_exists("/user/app/ITEM00001/support.flag")){
+        ani_notify(NOTIFI::KOFI, getLangSTR(LANG_STR::CONSIDER_SUPPORT), "https://ko-fi.com/lightningmods");
+        msgok(MSG_DIALOG::NORMAL, "If you would like to see future itemzflow updates consider supporting the project on ko-fi @ https://ko-fi.com/lightningmods");
+    }
     // all fine.
     return PS4_OK;
 }

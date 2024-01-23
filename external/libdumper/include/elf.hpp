@@ -117,7 +117,8 @@ namespace elf {
 	std::vector<unsigned char> get_auth_info(const std::string& path);
 	bool is_valid_decrypt(const std::string& original, const std::string& decrypted);
 	void zero_section_header(const std::string& path);
-	bool decrypt_dir(const std::string& input, const std::string& output);
+	bool decrypt_dir(const std::string& inputPath, const std::string& outputPath, bool fself);
+	bool decrypt_and_dump_self(const char* selfFile, const char* saveFile);
 } // namespace elf
 
 #endif // ELF_HPP_

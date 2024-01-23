@@ -1,29 +1,34 @@
-// Copyright (c) 2021 Al Azif
+// Copyright (c) 2021-2022 Al Azif
 // License: GPLv3
 
 #include "npbind.hpp"
-#include "common.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <sstream>
+#include <string>
 #include <vector>
-#include "log.h"
-#include "libshahash.h"
+
+#include "common.hpp"
+
+#include <sha1.h>
+
 
 namespace npbind {
 std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: ignore
   // Check for empty or pure whitespace path
   if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty path argument!");
+    return std::vector<npbind::NpBindEntry>();
   }
 
   // Check if file exists and is file
   if (!std::filesystem::is_regular_file(path)) {
     log_error("Input path does not exist or is not a file!");
+    return std::vector<npbind::NpBindEntry>();
   }
 
   // Open path
@@ -31,6 +36,7 @@ std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: 
   if (!npbind_input || !npbind_input.good()) {
     npbind_input.close();
     log_error("Cannot open file: %s", path.c_str());
+    return std::vector<npbind::NpBindEntry>();
   }
 
   // Check file magic (Read in whole header)
@@ -39,10 +45,13 @@ std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: 
   if (!npbind_input.good()) {
     npbind_input.close();
     log_error("Error reading header!");
+    return std::vector<npbind::NpBindEntry>();
+
   }
   if (__builtin_bswap32(header.magic) != NPBIND_MAGIC) {
     npbind_input.close();
     log_error("Input path is not a npbind.dat!");
+    return std::vector<npbind::NpBindEntry>();
   }
 
   // Read in body(s)
@@ -53,24 +62,24 @@ std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: 
     if (!npbind_input.good()) {
       npbind_input.close();
       log_error("Error reading entries!");
+      return std::vector<npbind::NpBindEntry>();
     }
     entries.push_back(temp_entry);
   }
 
   // Read digest
-  unsigned char digest[20];
-  npbind_input.seekg(-sizeof(digest), npbind_input.end); // Make sure we are in the right place
-  npbind_input.read((char *)&digest, sizeof(digest));    // Flawfinder: ignore
+  std::vector<unsigned char> digest(SHA1::HashBytes);
+  npbind_input.seekg(-digest.size(), npbind_input.end);                   // Make sure we are in the right place
+  npbind_input.read(reinterpret_cast<char *>(&digest[0]), digest.size()); // Flawfinder: ignore
   if (!npbind_input.good()) {
     // Should never reach here... will affect coverage %
     npbind_input.close();
     log_error("Error reading digest!");
+    return std::vector<npbind::NpBindEntry>();
   }
   npbind_input.close();
 
-  // Check digest
-  unsigned char calculated_digest[sizeof(digest)];
-
+// Check digest
   std::stringstream ss;
   ss.write(reinterpret_cast<const char *>(&header), sizeof(header));
 
@@ -78,34 +87,22 @@ std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: 
     ss.write(reinterpret_cast<const char *>(&entries[i]), sizeof(NpBindEntry));
   }
 
-  unsigned char data_to_hash[ss.str().size()];
+  std::vector<unsigned char> data_to_hash;
   for (size_t i = 0; i < ss.str().size(); i++) {
-    data_to_hash[i] = ss.str().c_str()[i];
+    data_to_hash.push_back(ss.str().c_str()[i]);
   }
 
-  Sha1Context context;
-  Sha1BlockInit(&context);
-  Sha1BlockUpdate(&context, data_to_hash, ss.str().size());
-  Sha1BlockResult(&context, calculated_digest);
+  std::vector<unsigned char> calculated_digest(digest.size());
 
-#if 0
-  log_info("\[SHA1] Digest: ");
+  SHA1 sha1;
+  sha1(&data_to_hash[0], ss.str().size());
+  sha1.getHash(&calculated_digest[0]);
 
-  for (int i = 0; i < 20; i++)
-      log_info("%x\n", digest[i]);
-      log_info("[SHA1] calculated_digest: ");
-
-      for (int i = 0; i < 20; i++)
-          log_info("%x", calculated_digest[i]);
-
-      log_info("\n");
-#endif
-
-  if (std::memcmp(calculated_digest, digest, sizeof(digest)) != 0) {
-      log_info("[SHA1] File %s has failed validation", path.c_str());
+  if (std::memcmp(&calculated_digest[0], &digest[0], digest.size()) != 0) {
+      log_error("Digests do not match! Aborting...");
   }
-  else
-      log_info("[SHA1] File %s Successfully validated", path.c_str());
+   else
+      log_info("Digests match!");
 
   return entries;
 }

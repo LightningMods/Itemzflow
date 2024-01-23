@@ -9,6 +9,7 @@
 
 namespace dump {
 bool __dump(const std::string& usb_device, const std::string& title_id, Dump_Options opt, const std::string& title);
+bool dump_dlc(const std::string & usb_device, const std::string & title_id);
 } // namespace dump
 
 #endif // DUMP_HPP_

@@ -19,6 +19,7 @@ extern "C"{
 #include "dialog.h"
 #include "zip/zip.h"
 }
+#include <ipc_client.hpp>
 #include "installpkg.h"
 #include <sys/sysctl.h>
 #include <sys/param.h>
@@ -29,6 +30,10 @@ extern "C"{
 #include <string>
 #include <vector>
 #include <fstream>
+
+
+
+
 /*================== MISC GOLBAL VAR ============*/
 static uint32_t sdkVersion = -1;
 static std::string checkedsize;
@@ -43,13 +48,15 @@ size_t _orbisFile_lastopenFile_size;
 ItemzSettings set,
 * get;
 
-extern char ipc_msg[];
+extern std::string ipc_msg;
 extern std::atomic_int inserted_disc;
 extern std::atomic_bool is_disc_inserted;
 extern struct retry_t* cf_tex;
 extern int total_pages;
-extern std::vector<item_t> all_apps; // Installed_Apps
+extern ThreadSafeVector<item_t> all_apps; // Installed_Apps
 bool sceAppInst_done = false;
+
+using namespace multi_select_options;
 
 bool (*sceStoreApiLaunchStore)(const char* query) = NULL;
 update_ret (*sceStoreApiCheckUpdate)(const char* tid) = NULL;
@@ -59,7 +66,7 @@ update_ret (*sceStoreApiCheckUpdate)(const char* tid) = NULL;
 #include <libtag/taglib.h>
 #include <libtag/fileref.h>
 #include <libtag/tag.h>
-std::vector<item_t> mp3_playlist;
+ThreadSafeVector<item_t> mp3_playlist;
 current_song_t current_song;
 
 static uint64_t off2 = 0;
@@ -85,7 +92,7 @@ snd[1152 * 2];      // small fixed buffer to store a single audio frame of decod
 /*===============================================*/
 
 /*============= USB VARS ========================*/
-extern pthread_mutex_t usb_lock;
+std::mutex usb_lock;
 std::atomic_int usb_number = ATOMIC_VAR_INIT(false);
 /*=============================================*/
 
@@ -109,6 +116,69 @@ const char *if_d_zip[] = {
 };
 bool reboot_app = false;
 #include "shaders.h"
+
+
+double CalcFreeGigs(const char* path) {
+    struct statfs st;
+    if (statfs(path, &st) != 0) {
+        return 0;
+    }
+    return (double)st.f_bfree * st.f_bsize / (1024 * 1024 * 1024);
+}
+
+#if __cplusplus
+extern "C" {
+#endif
+int64_t sys_dynlib_load_prx(char* prxPath, int* moduleID)
+{
+    return (int64_t)syscall4(594, prxPath, 0, moduleID, 0);
+}
+
+int64_t sys_dynlib_unload_prx(int64_t prxID)
+{
+    return (int64_t)syscall1(595, (void*)prxID);
+}
+
+
+int64_t sys_dynlib_dlsym(int64_t moduleHandle, const char* functionName, void* destFuncOffset)
+{
+    return (int64_t)syscall3(591, (void*)moduleHandle, (void*)functionName, destFuncOffset);
+}
+
+unsigned char* orbisFileGetFileContent(const char* filename)
+{
+    _orbisFile_lastopenFile_size = -1;
+
+    FILE* file = fopen(filename, "rb");
+    if (!file)
+    {
+        log_error("Unable to open file \"%s\".", filename); return NULL;
+    }
+
+    fseek(file, 0, SEEK_END);
+    size_t size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    unsigned char* buffer = (unsigned char*)malloc((size + 1) * sizeof(char));
+    fread(buffer, sizeof(char), size, file);
+    buffer[size] = 0;
+    _orbisFile_lastopenFile_size = size;
+    fclose(file);
+
+    return buffer;
+}
+
+int sceSystemServiceKillApp(uint32_t appid, int opt,int method, int reason);
+int sceShellUIUtilInitialize();
+int sceShellUIUtilLaunchByUri(const char* uri,  SceShellUIUtilLaunchByUriParam *Param);
+int sceAppInstUtilAppUnInstallAddcont(const char* title_id, const char* content_id);
+int sceAppInstUtilAppUnInstallPat(const char* tid);
+int malloc_stats_fast(LibcMallocManagedSize *ManagedSize);
+
+#ifdef __cplusplus
+}
+#endif
+
 /*=====================================================*/
 /*
 * Creates all the directories in the provided path. (can include a filename)
@@ -190,7 +260,7 @@ static int theme_info(void* user, const char* section, const char* name,
 void __stack_chk_fail(void)
 {
     log_info("Stack smashing detected.");
-    msgok(FATAL, "Stack Smashing has been Detected");
+    msgok(MSG_DIALOG::FATAL, "Stack Smashing has been Detected");
 }
 
 bool IS_ERROR(uint32_t ret)
@@ -227,58 +297,6 @@ size_t CalcAppsize(const char* filename) {
     return st.st_size;   
 }
 
-double CalcFreeGigs(const char* path) {
-    struct statfs st;
-    if (statfs(path, &st) != 0) {
-        return 0;
-    }
-    return (double)st.f_bfree * st.f_bsize / (1024 * 1024 * 1024);
-}
-
-#if __cplusplus
-extern "C" {
-#endif
-int64_t sys_dynlib_load_prx(char* prxPath, int* moduleID)
-{
-    return (int64_t)syscall4(594, prxPath, 0, moduleID, 0);
-}
-
-int64_t sys_dynlib_unload_prx(int64_t prxID)
-{
-    return (int64_t)syscall1(595, (void*)prxID);
-}
-
-
-int64_t sys_dynlib_dlsym(int64_t moduleHandle, const char* functionName, void* destFuncOffset)
-{
-    return (int64_t)syscall3(591, (void*)moduleHandle, (void*)functionName, destFuncOffset);
-}
-
-unsigned char* orbisFileGetFileContent(const char* filename)
-{
-    _orbisFile_lastopenFile_size = -1;
-
-    FILE* file = fopen(filename, "rb");
-    if (!file)
-    {
-        log_error("Unable to open file \"%s\".", filename); return NULL;
-    }
-
-    fseek(file, 0, SEEK_END);
-    size_t size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    unsigned char* buffer = (unsigned char*)malloc((size + 1) * sizeof(char));
-    fread(buffer, sizeof(char), size, file);
-    buffer[size] = 0;
-    _orbisFile_lastopenFile_size = size;
-    fclose(file);
-
-    return buffer;
-}
-
-int sceSystemServiceKillApp(uint32_t appid, int opt,int method, int reason);
-
 int ItemzLocalKillApp(uint32_t appid) {
 
     log_info("ItemzLocalKillApp(%x, -1, 0, 0)", appid);
@@ -288,8 +306,6 @@ int ItemzLocalKillApp(uint32_t appid) {
         return ITEMZCORE_EINVAL;
 }
 
-int sceShellUIUtilInitialize();
-int sceShellUIUtilLaunchByUri(const char* uri,  SceShellUIUtilLaunchByUriParam *Param);
 
 int ItemzLaunchByUri(const char* uri) {
     int libcmi = -1;
@@ -321,10 +337,10 @@ bool copyFile(std::string source, std::string dest, bool show_progress)
         if (out > 0)
         {   
             if(show_progress)
-                 progstart((char*)"Starting...");
+                 progstart("Starting...");
 
             size_t bytes ,total = 0;
-            size_t len = CalcAppsize((char*)source.c_str());
+            size_t len = CalcAppsize(source.c_str());
             std::string size = calculateSize(len);
 
             std::vector<char> buffer(MB(10));
@@ -337,7 +353,7 @@ bool copyFile(std::string source, std::string dest, bool show_progress)
 			           uint32_t g_progress = (uint32_t)(((float)total / len) * 100.f);
 			           int status = sceMsgDialogUpdateStatus();
 			            if (ORBIS_COMMON_DIALOG_STATUS_RUNNING == status) {
-                            buf = fmt::format("{0:}...\n Size: {1:}", getLangSTR(COPYING_FILE), size);
+                            buf = fmt::format("{0:}...\n Size: {1:}", getLangSTR(LANG_STR::COPYING_FILE), size);
 			            	sceMsgDialogProgressBarSetValue(0, g_progress); 
 				            sceMsgDialogProgressBarSetMsg(0, buf.c_str());
 			            }
@@ -382,11 +398,14 @@ void ProgSetMessagewText(int prog, const char* fmt, ...)
         sceMsgDialogProgressBarSetMsg(0, buff);
 }
 /// timing
-unsigned int get_time_ms(void)
+float get_time_ms(std::chrono::time_point<std::chrono::system_clock> &last_time)
 {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+    auto now = std::chrono::system_clock::now();
+    auto duration = now - last_time;
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    last_time = now;
+
+    return (float)(millis / 1000.f);
 }
 
 bool touch_file(const char* destfile)
@@ -409,7 +428,9 @@ unsigned char _bittest64(uint64_t *Base, uint64_t Offset)
     :"Ir" (Offset));
   return (old != 0);
 }
-
+// both real and _func functions are the same
+unsigned int sceShellCoreUtilIsUsbMassStorageMounted(unsigned int usb_index);
+//interchangable
 unsigned int sceShellCoreUtilIsUsbMassStorageMounted_func(unsigned int usb_index)
 {
   uint64_t res;
@@ -425,8 +446,8 @@ unsigned int sceShellCoreUtilIsUsbMassStorageMounted_func(unsigned int usb_index
 
 unsigned int usbpath()
 {
+   // std::lock_guard<std::mutex> lock(disc_lock);
     unsigned int usb_index = -1;
-    pthread_mutex_lock(&usb_lock);
     for (int i = 0; i < 8; i++){
         if (sceShellCoreUtilIsUsbMassStorageMounted_func((unsigned int)i)){
               usb_index = i;
@@ -434,8 +455,6 @@ unsigned int usbpath()
               break;
         }
     }
-    pthread_mutex_unlock(&usb_lock);
-
     return usb_index;
 }
 
@@ -542,8 +561,6 @@ bool is_apputil_init()
     return true;
 }
 
-int sceAppInstUtilAppUnInstallPat(const char* tid);
-
 bool app_inst_util_uninstall_patch(const char* title_id, int* error) {
     int ret;
 
@@ -628,8 +645,6 @@ err:
     log_error("app_inst_util_uninstall_game: 0x%X", error);
     return false;
 }
-
-int sceAppInstUtilAppUnInstallAddcont(const char* title_id, const char* content_id);
 
 bool app_inst_util_uninstall_ac(const char* content_id, const char* title_id, int* error) {
 
@@ -773,7 +788,7 @@ bool LoadOptions(ItemzSettings *set)
     set->setting_bools[Daemon_on_start] = true;
     set->Dump_opt = SEL_DUMP_ALL;
     set->sort_cat = NO_CATEGORY_FILTER;
-    set->sort_by = NA_SORT;
+    set->sort_by = multi_select_options::NA_SORT;
     set->setting_bools[using_sb] = true;
     set->setting_bools[INTERNAL_UPDATE] = false;
     set->setting_bools[Show_install_prog] = true;
@@ -927,12 +942,12 @@ no_theme:
             log_debug(" This PKG has no lang files... trying embedded");
 
             if(!load_embdded_eng())
-               msgok(FATAL, "Failed to load Backup Lang...\nThe App is unable to continue");
+               msgok(MSG_DIALOG::FATAL, "Failed to load Backup Lang...\nThe App is unable to continue");
             else
               log_debug(" Loaded embdded ini lang file");
         }
         else
-            log_debug(" Loaded the backup, %s failed to load", Language_GetName(lang));
+            log_debug(" Loaded the backup, %s failed to load", Language_GetName(lang).c_str());
     }
 
     if (!Fnt_setting_enabled) {
@@ -981,7 +996,7 @@ no_theme:
     log_info( "set->using_theme  : %i", set->setting_bools[using_theme]);
     log_info( "set->Dump_opt     : %i", set->Dump_opt);
     log_info( "set->Install_prog.: %s", set->setting_bools[Show_install_prog] ? "ON" : "OFF");
-    log_info( "set->Lang         : %s : %i", Language_GetName(lang), set->lang);
+    log_info( "set->Lang         : %s : %i", Language_GetName(lang).c_str(), set->lang);
 
     return no_error;
 }
@@ -1016,7 +1031,7 @@ bool SaveOptions(ItemzSettings *set)
     log_info("set->using_theme  : %i", set->setting_bools[using_theme]);
     log_info("set->RESTIRCTED   : %i", set->setting_bools[INTERNAL_UPDATE]);
     log_info("set->Install_prog.: %s", set->setting_bools[Show_install_prog] ? "ON" : "OFF");
-    log_info("set->Lang         : %s : %i", Language_GetName(set->lang), set->lang);
+    log_info("set->Lang         : %s : %i", Language_GetName(set->lang).c_str(), set->lang);
     log_info("==========================================================");
 
     /* Load values */
@@ -1092,7 +1107,7 @@ bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer
 
             if (result.endstatus == ORBIS_IME_DIALOG_END_STATUS_USER_CANCELED){
                 log_info("User Cancelled this Keyboard Session");
-                ani_notify(NOTIFI_WARNING, getLangSTR(OP_CANNED), getLangSTR(OP_CANNED_1));
+                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OP_CANNED), getLangSTR(LANG_STR::OP_CANNED_1));
             }
             else if (result.endstatus == ORBIS_IME_DIALOG_END_STATUS_OK)
             {
@@ -1151,49 +1166,6 @@ bool rmtree(const char path[]) {
     return true;
 }
 
-bool copy_dir(const char* sourcedir, const char* destdir) {
-
-    log_info("s: %s d: %s", sourcedir, destdir);
-    DIR* dir = opendir(sourcedir);
-
-    struct dirent* dp;
-    struct stat info;
-    char src_path[1024];
-    char dst_path[1024];
-
-    if (!dir) {
-        return false;
-    }
-    mkdir(destdir, 0777);
-    while ((dp = readdir(dir)) != NULL) {
-        if(strstr(dp->d_name, "save.ini") != NULL)
-           log_info("Save.ini file skipped...");
-        else if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..") 
-        || strstr(dp->d_name, "nobackup") != NULL) {
-            continue;
-        }
-        else {
-            sprintf(src_path, "%s/%s", sourcedir, dp->d_name);
-            sprintf(dst_path, "%s/%s", destdir, dp->d_name);
-
-            if (!stat(src_path, &info)) {
-                if (S_ISDIR(info.st_mode)) {
-                    copy_dir(src_path, dst_path);
-                }
-                else if (S_ISREG(info.st_mode)) {
-                    if (!copyFile(src_path, dst_path, false))
-                        return false;
-                }
-            }
-        }
-    }
-    closedir(dir);
-
-    return true;
-}
-
-int malloc_stats_fast(LibcMallocManagedSize *ManagedSize);
-
 void print_memory()
 {
    size_t sz = 0;
@@ -1208,7 +1180,7 @@ void print_memory()
    log_info("[VRAM] VRAM_Available: %s, AmountUsed: %.2f%%",calculateSize(sz).c_str(), dfp_fmem);
 }
 
-void Kill_BigApp(GameStatus &status){
+void Kill_BigApp(std::atomic<GameStatus> &status){
     int ret = -1;
     
     int BigAppid = sceSystemServiceGetAppIdOfBigApp();
@@ -1220,19 +1192,19 @@ void Kill_BigApp(GameStatus &status){
     log_info("[CLOSE] BigApp ID: 0x%X", BigAppid);
     if ((ret = ItemzLocalKillApp(BigAppid)) == ITEMZCORE_SUCCESS)
     {
-           ani_notify(NOTIFI_INFO, getLangSTR(APP_CLOSED), "");
+           ani_notify(NOTIFI::INFO, getLangSTR(LANG_STR::APP_CLOSED), "");
            log_info("[CLOSE] App Closed");
     }
     else
     {
-        ani_notify(NOTIFI_WARNING, getLangSTR(FAILED_TO_CLOSE), fmt::format( "{0:}: {1:#x}", getLangSTR(ERROR_CODE), ret));
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_TO_CLOSE), fmt::format( "{0:}: {1:#x}", getLangSTR(LANG_STR::ERROR_CODE), ret));
         log_error("[CLOSE] Failed to close APP: 0x%X", ret);
     }
     
     status = NO_APP_OPENED;
 }
 
-int progstart(char* format, ...)
+int progstart(const char* format, ...)
 {
 
     
@@ -1489,7 +1461,7 @@ void* CheckForUpdateThread(void*)
         update_ret ret = check_update_from_url(ITEMZFLOW_TID);
         if (ret == IF_UPDATE_FOUND){
             log_info(" Update is available, the server reported a different Hash");
-            ani_notify(NOTIFI_INFO, getLangSTR(OPT_UPDATE), "");
+            ani_notify(NOTIFI::INFO, getLangSTR(LANG_STR::OPT_UPDATE), "");
             sleep(5 * 60);
         }
         else if(ret == IF_NO_UPDATE) {
@@ -1510,9 +1482,7 @@ void launch_update_thread()
     pthread_create(&id, NULL, CheckForUpdateThread, NULL);//  pthread_create(&id, NULL, timer_thr, NULL);
 }
 
-#if __cplusplus
-}
-#endif
+
 bool Launch_Store_URI()
 {
     sceStoreApiLaunchStore = (bool (*)(const char*))prx_func_loader(asset_path("../Media/store_api.prx"), "sceStoreApiLaunchStore");
@@ -1528,6 +1498,18 @@ bool Launch_Store_URI()
 
     return false;
 }
+
+void ProgressUpdate(uint32_t prog, std::string fmt)
+{
+      
+    int status = sceMsgDialogUpdateStatus();
+	if (ORBIS_COMMON_DIALOG_STATUS_RUNNING == status) {
+		sceMsgDialogProgressBarSetValue(0, prog);
+        sceMsgDialogProgressBarSetMsg(0, fmt.c_str());
+	}
+}
+
+
 
 mp3_status_t MP3_Player(std::string path) {
    
@@ -1573,7 +1555,7 @@ mp3_status_t MP3_Player(std::string path) {
             log_info("Reached end of playlist, resetting index");
             current_song.current_file =  1;
         }
-        path = path + "/" + mp3_playlist[current_song.current_file].id;
+        path = path + "/" + mp3_playlist[current_song.current_file].info.id;
         if (path.substr(path.size() - 3, 3) != "mp3") { 
             log_error("Not a valid MP3 file: %s", path.c_str());
             goto err;
@@ -1598,7 +1580,7 @@ mp3_status_t MP3_Player(std::string path) {
     }
     else
     {
-        current_song.song_title = songf.tag()->title().isEmpty() ? mp3_playlist[current_song.current_file].id : songf.tag()->title().toCString(true);
+        current_song.song_title = songf.tag()->title().isEmpty() ? mp3_playlist[current_song.current_file].info.id : songf.tag()->title().toCString(true);
         current_song.song_artist = songf.tag()->artist().isEmpty() ? "Unknown Artist" : songf.tag()->artist().toCString(true);
     }
 
@@ -1641,7 +1623,7 @@ mp3_status_t MP3_Player(std::string path) {
 
 err:
    if (2 >= retry_mp3_count) {
-       ani_notify(NOTIFI_WARNING, getLangSTR(FAILED_MP3), fmt::format("({0:d}/2)", retry_mp3_count+1));
+       ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_MP3), fmt::format("({0:d}/2)", retry_mp3_count+1));
        retry_mp3_count++;
    }
    dataSize = 0;
@@ -1673,97 +1655,96 @@ void Stop_Music(){
 
 }
 bool do_update(std::string url) {
+    IPC_Client& ipc = IPC_Client::getInstance();
 
-  log_debug("[UPDATE] Starting Update...");
-  log_debug("[UPDATE] Updating...");
+    log_debug("[UPDATE] Starting Update...");
+    log_debug("[UPDATE] Updating...");
 
-  if (get->setting_bools[INTERNAL_UPDATE] && !is_connected_app) {
-    log_debug("[UPDATE] Daemon Not connected to app, exiting update mode ... ");
-    return false;
-  }
-
-  if (get->setting_bools[INTERNAL_UPDATE]) {
-    std::string tmp;
-    long ret = -1;
-    char ipc_msg[100];
-
-    tmp = fmt::format("{}/update/if_update.pkg", url.c_str());
-    if ((ret = dl_from_url(tmp.c_str(), APP_PATH("../if_update.pkg"))) < 0 && if_exists(APP_PATH("../if_update.pkg"))) {
-      log_error("[UPDATE] Failed to download if_update.pkg ret: %i", ret);
-      return false;
+    if (get->setting_bools[INTERNAL_UPDATE] && !is_connected_app) {
+        log_debug("[UPDATE] Daemon Not connected to app, exiting update mode ... ");
+        return false;
     }
 
-    sprintf( & ipc_msg[1], "%i", getpid());
-    log_info("Sending PID: %s", & ipc_msg[1]);
-    int error = IPCSendCommand(INSTALL_IF_UPDATE, (uint8_t * ) & ipc_msg[0]);
-    if (error != NO_ERROR) {
-      sceMsgDialogTerminate();
-      log_error("[UPDATE] IPC INSTALL UPDATE ERROR: %i", error);
-      return false;
-    }
+    if (get->setting_bools[INTERNAL_UPDATE]) {
+        std::string tmp;
+        long ret = -1;
+        tmp = fmt::format("{}/update/if_update.pkg", url.c_str());
+        if ((ret = dl_from_url(tmp.c_str(), APP_PATH("../if_update.pkg"))) < 0 && if_exists(APP_PATH("../if_update.pkg"))) {
+            log_error("[UPDATE] Failed to download if_update.pkg ret: %i", ret);
+            return false;
+        }
 
-    log_debug("[UPDATE] Copied, Removing Temp Files");
-    log_debug("[UPDATE] Complete...");
+        ipc_msg = std::to_string(getpid());
+        
+        IPC_Ret error = ipc.IPCSendCommand(IPC_Commands::INSTALL_IF_UPDATE, ipc_msg);
+        if (error != IPC_Ret::NO_ERROR) {
+            sceMsgDialogTerminate();
+            log_error("[UPDATE] IPC INSTALL UPDATE ERROR: %i", error);
+            return false;
+        }
 
-    raise(SIGQUIT);
-  } 
-  else {
-    if (!Launch_Store_URI()) {
-      log_error("[UPDATE] Failed to launch store uri");
-      return false;
+        log_debug("[UPDATE] Copied, Removing Temp Files");
+        log_debug("[UPDATE] Complete...");
+
+        raise(SIGQUIT);
+    } else {
+        if (!Launch_Store_URI()) {
+            log_error("[UPDATE] Failed to launch store uri");
+            return false;
+        }
     }
-  }
-  return true;
+    return true;
 }
 
-void check_for_update_file(){
-    
-    loadmsg(getLangSTR(CHECH_UPDATE_IN_PROGRESS));
+void check_for_update_file() {
+    IPC_Client& ipc = IPC_Client::getInstance();
+
+    loadmsg(getLangSTR(LANG_STR::CHECH_UPDATE_IN_PROGRESS));
 
     bool found = false;
     log_debug("[STARTUP][UPDATE] Checking for update file ...");
-    if(if_exists("/user/update_tmp")){
-		log_debug("[IF_UPDATE] Found Update temp folder, moving files back.."); //if updated via store
+    if (if_exists("/user/update_tmp")) {
+        log_debug("[IF_UPDATE] Found Update temp folder, moving files back.."); //if updated via store
         copy_dir("/user/update_tmp/covers", "/user/app/ITEM00001/covers");
-		copy_dir("/user/update_tmp/custom_app_names", "/user/app/ITEM00001/custom_app_names");
-		copyFile("/user/update_tmp/settings.ini", "/user/app/ITEM00001/settings.ini", false);
-		rmtree("/user/update_tmp");
+        copy_dir("/user/update_tmp/custom_app_names", "/user/app/ITEM00001/custom_app_names");
+        copyFile("/user/update_tmp/settings.ini", "/user/app/ITEM00001/settings.ini", false);
+        rmtree("/user/update_tmp");
+        unlink("/user/update_tmp");
         log_debug("[IF_UPDATE] Moved files back, removing temp folder..");
-	}
-	else
-       log_info("No Update temp folder found");
-		    
-    if(!is_connected_app){
+    } else {
+        log_info("No Update temp folder found");
+    }
+
+    if (!is_connected_app) {
         log_debug("[STARTUP][UPDATE] Daemon Not connected to app, exiting update mode ... ");
         sceMsgDialogTerminate();
         return;
     }
-    if(if_exists(APP_PATH("../if_update.pkg"))){
+
+    if (if_exists(APP_PATH("../if_update.pkg"))) {
         log_debug("[STARTUP][UPDATE][HDD] if_update.pkg exists, starting update ...");
         found = true;
-    }
-    else if(usbpath() != -1 && if_exists(fmt::format("/mnt/usb{0:d}/if_update.pkg", usbpath()).c_str())){
+    } else if (usbpath() != -1 && if_exists(fmt::format("/mnt/usb{}/if_update.pkg", usbpath()).c_str())) {
         log_debug("[STARTUP][UPDATE][USB] if_update.pkg exists, starting update ...");
-        copyFile(fmt::format("/mnt/usb{0:d}/if_update.pkg", usbpath()), APP_PATH("../if_update.pkg"), false);
+        copyFile(fmt::format("/mnt/usb{}/if_update.pkg", usbpath()), APP_PATH("../if_update.pkg"), false);
         found = true;
-    }
-    else {
+    } else {
         log_debug("[STARTUP][UPDATE] if_update.pkg does not exist, exiting update mode ...");
         sceMsgDialogTerminate();
         return;
     }
-    if(found){
+
+    if (found) {
         log_debug("[STARTUP][UPDATE] Update Found, Sending IPC Command for Update Installing ...");
-        sprintf(&ipc_msg[1], "%i", getpid());
-        log_info("[STARTUP] Sending PID: %s", &ipc_msg[1]);
-        int error = IPCSendCommand(INSTALL_IF_UPDATE, (uint8_t*)&ipc_msg[0]);
-        if (error != NO_ERROR) {
+        ipc_msg = std::to_string(getpid());
+        log_info("[STARTUP] Sending PID: %s", ipc_msg.c_str());
+        IPC_Ret error = ipc.IPCSendCommand(IPC_Commands::INSTALL_IF_UPDATE, ipc_msg);
+        if (error != IPC_Ret::NO_ERROR) {
             log_error("[STARTUP][UPDATE] IPC INSTALL UPDATE ERROR: %i", error);
             sceMsgDialogTerminate();
             return;
         }
-    }
-    else{
+    } else {
         log_debug("[STARTUP][UPDATE] if_update.pkg does not exist, exiting update mode ...");
         sceMsgDialogTerminate();
         return;
@@ -1813,24 +1794,24 @@ bool get_ip_address(std::string &ip)
 	return true;
 }
 
-void msgok(enum MSG_DIALOG level, std::string in)
+void msgok(MSG_DIALOG::MSG_DIALOG_TYPE level, std::string in)
 {
     sceMsgDialogTerminate();
     std::string out;
 
     switch (level)
     {
-    case NORMAL:
+    case MSG_DIALOG::NORMAL:
         out = in;
         break;
-    case FATAL:
+    case MSG_DIALOG::FATAL:
 
         log_fatal(in.c_str());
-        out =  fmt::format("{0:} {1:}\n\n {2:}", getLangSTR(FATAL_ERROR), in, getLangSTR(PRESS_OK_CLOSE));
+        out =  fmt::format("{0:} {1:}\n\n {2:}", getLangSTR(LANG_STR::FATAL_ERROR), in, getLangSTR(LANG_STR::PRESS_OK_CLOSE));
         break;
-    case WARNING:
+    case MSG_DIALOG::WARNING:
         log_warn( in.c_str());
-        out =  fmt::format("{0:} {1:}", getLangSTR(WARNING2), in);
+        out =  fmt::format("{0:} {1:}", getLangSTR(LANG_STR::WARNING2), in);
         break;
     }
 
@@ -1863,7 +1844,7 @@ void msgok(enum MSG_DIALOG level, std::string in)
         }
     }
 
-    if (level == FATAL) {
+    if (level == MSG_DIALOG::FATAL) {
         log_fatal(in.c_str());
         raise(SIGQUIT);
     }
@@ -1893,6 +1874,38 @@ void loadmsg(std::string in)
     sceMsgDialogOpen(&dialogParam);
 
     return;
+}
+
+void scan_for_disc() {
+  //check if theres a disc
+  //std::lock_guard < std::mutex > lock(disc_lock);
+  char stack_tid[16];
+  int ret = -1;
+
+  memset( & stack_tid[0], 0, 16);
+  if ((ret = sceAppInstUtilAppGetInsertedDiscTitleId( & stack_tid[0])) >= 0 && !is_disc_inserted.load()) {
+    if (!all_apps.empty() && all_apps.size() > 1) {
+      for (int i = 0; i < all_apps[0].count.token_c + 1; i++) {
+        // skip if its an FPKG
+        if (all_apps[i].flags.is_fpkg)
+          continue;
+
+        // log_info("Disc inserted: %s : %i %s", stack_tid, i , all_apps[i].id.c_str());
+        if (all_apps[i].info.id.find( & stack_tid[0]) != std::string::npos) {
+          //Store the texture ID of the inserted disc
+          inserted_disc = i;
+          //inserted_disc: 1 CUSA00900 1  18
+          log_info("[UTIL] inserted_disc: %i %s %i %s %i", inserted_disc.load(), stack_tid, i, all_apps[i].info.id.c_str(), all_apps.size());
+          is_disc_inserted = true;
+          break;
+        }
+      }
+    }
+  } else if (ret == SCE_APP_INSTALLER_ERROR_DISC_NOT_INSERTED) {
+    // log_info("[UTIL] disc not inserted %x", ret);
+    inserted_disc = -999;
+    is_disc_inserted = false;
+  }
 }
 
 bool install_IF_Theme(std::string theme_path){
@@ -2055,34 +2068,34 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
                 fmt::print("[ERROR] Switch {0:#x}", sys_res);
                 switch (sys_res) {
                 case SCE_LNC_ERROR_APP_NOT_FOUND: {
-                    //msgok(WARNING, getLangSTR(APP_NOT_FOUND));
-                    if(Confirmation_Msg(fmt::format("{0:}\n\n{1:}\n{2:}", getLangSTR(IF_LAUNCH_TROUBLESHOOTER), getLangSTR(LAUNCH_FAILED_BC_NOT_FOUND), getLangSTR(CONFIRMATION_2))) == YES){
-                       if(Fix_Game_In_DB(all_apps, index, all_apps[index].is_fpkg))
-                          ani_notify(NOTIFI_GAME, getLangSTR(GAME_INSERT_SUCCESSFUL), getLangSTR(REPAIR_ATTEMPTED1));
+                    //msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::APP_NOT_FOUND));
+                    if(Confirmation_Msg(fmt::format("{0:}\n\n{1:}\n{2:}", getLangSTR(LANG_STR::IF_LAUNCH_TROUBLESHOOTER), getLangSTR(LANG_STR::LAUNCH_FAILED_BC_NOT_FOUND), getLangSTR(LANG_STR::CONFIRMATION_2))) == YES){
+                       if(Fix_Game_In_DB(all_apps, index, all_apps[index].flags.is_fpkg))
+                          ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::GAME_INSERT_SUCCESSFUL), getLangSTR(LANG_STR::REPAIR_ATTEMPTED1));
                         else
-                          msgok(WARNING, getLangSTR(GAME_INSERT_FAILED));
+                          msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::GAME_INSERT_FAILED));
                     }
                     break;
                 }
                 case SCE_LNC_UTIL_ERROR_ALREADY_RUNNING: {
-                    msgok(WARNING, getLangSTR(APP_OPENED));
+                    msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::APP_OPENED));
                     break;
                 }
                 case SCE_LNC_UTIL_ERROR_APPHOME_EBOOTBIN_NOT_FOUND: {
-                    msgok(WARNING, getLangSTR(MISSING_EBOOT));
+                    msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::MISSING_EBOOT));
                     break;
                 }
                 case SCE_LNC_UTIL_ERROR_APPHOME_PARAMSFO_NOT_FOUND: {
-                    msgok(WARNING, getLangSTR(MISSING_SFO));
+                    msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::MISSING_SFO));
                     break;
                 }
                 case SCE_LNC_UTIL_ERROR_NO_SFOKEY_IN_APP_INFO: {
-                    //msgok(WARNING, getLangSTR(CORRUPT_SFO));
-                    if(Confirmation_Msg(fmt::format("{0:}\n\n{1:}\n{2:}", getLangSTR(IF_LAUNCH_TROUBLESHOOTER), getLangSTR(FIX_BROKEN_SFO_DB), getLangSTR(CONFIRMATION_3))) == YES){
-                       if(Fix_Game_In_DB(all_apps, index, all_apps[index].is_fpkg))
-                          ani_notify(NOTIFI_GAME, getLangSTR(REPAIR_ATTEMPTED), getLangSTR(REPAIR_ATTEMPTED1));
+                    //msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::CORRUPT_SFO));
+                    if(Confirmation_Msg(fmt::format("{0:}\n\n{1:}\n{2:}", getLangSTR(LANG_STR::IF_LAUNCH_TROUBLESHOOTER), getLangSTR(LANG_STR::FIX_BROKEN_SFO_DB), getLangSTR(LANG_STR::CONFIRMATION_3))) == YES){
+                       if(Fix_Game_In_DB(all_apps, index, all_apps[index].flags.is_fpkg))
+                          ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::REPAIR_ATTEMPTED), getLangSTR(LANG_STR::REPAIR_ATTEMPTED1));
                        else
-                          msgok(WARNING, getLangSTR(GAME_INSERT_FAILED));
+                          msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::GAME_INSERT_FAILED));
                     }
                     break;
                 }
@@ -2095,23 +2108,23 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
                     break;
                 }
                 case SCE_LNC_UTIL_ERROR_SETUP_FS_SANDBOX: {
-                    msgok(WARNING, getLangSTR(APP_UNL));
+                    msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::APP_UNL));
                     break;
                 }
                 case SCE_LNC_UTIL_ERROR_INVALID_TITLE_ID: {
-                    msgok(WARNING, getLangSTR(ID_NOT_VAILD));
+                    msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::ID_NOT_VAILD));
                     break;
                 }
                 case PROCCESS_STARTER_OP_NOT_SUPPORTED: {
 
                     if(TITLE_ID == APP_HOME_HOST_TID)
-                       msgok(WARNING, getLangSTR(LNC_TOO_MANY_ROOT_FILES));
+                       msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::LNC_TOO_MANY_ROOT_FILES));
 
                     break;
                 }
 
                 default: {
-                    msgok(WARNING, fmt::format("{0:}: {1:#x}", getLangSTR(LAUNCH_ERROR),sys_res));
+                    msgok(MSG_DIALOG::WARNING, fmt::format("{0:}: {1:#x}", getLangSTR(LANG_STR::LAUNCH_ERROR),sys_res));
                     break;
                 }
                 }
@@ -2122,7 +2135,7 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
     }
     else {
         if(!silent)
-            msgok(WARNING, fmt::format("{0:}: {1:#x}", getLangSTR(LAUNCH_ERROR),libcmi));
+            msgok(MSG_DIALOG::WARNING, fmt::format("{0:}: {1:#x}", getLangSTR(LANG_STR::LAUNCH_ERROR),libcmi));
     }
 
     return sys_res;
@@ -2135,15 +2148,15 @@ bool is_sfo(const char* input_file_name) {
     // Get SFO header offset
     uint32_t magic;
     fread(&magic, 4, 1, file);
-     if (magic == 1179865088) { // Param.sfo file
+    if (magic == 1179865088) { // Param.sfo file
         rewind(file);
-     }
-     else
-	 {
+    }
+    else
+	{
 		log_error("[SFO] Not a param.sfo file. %s", input_file_name);
 		fclose(file);
 		return false;
-	 }
+	}
 	fclose(file);
 	return true;
 }
@@ -2224,75 +2237,76 @@ bool dlc_pkg_details(const char* src_dest, DLC_PKG_DETAILS &details) {
 void rebuild_db(){
 
     if (get->sort_cat == NO_CATEGORY_FILTER || 
-    (get->sort_cat != NO_CATEGORY_FILTER && Confirmation_Msg(getLangSTR(CAT_REBUILD_WARNING)) == YES))
+    (get->sort_cat != NO_CATEGORY_FILTER && Confirmation_Msg(getLangSTR(LANG_STR::CAT_REBUILD_WARNING)) == YES))
     {
 
-        progstart((char *)getLangSTR(REBUILDING_FOR_FPKG).c_str());
+        progstart((char *)getLangSTR(LANG_STR::REBUILDING_FOR_FPKG).c_str());
         int failures = 0;
-        for (int i = 1; i <= all_apps[0].HDD_count; i++)
+        for (int i = 1; i <= all_apps[0].count.HDD_count; i++)
         {
-            bool is_if = ((all_apps[i].id == "ITEM00001") || (all_apps[i].id == "ITEM99999"));
-            if (!all_apps[i].is_fpkg || is_if)
+            bool is_if = ((all_apps[i].info.id == "ITEM00001") || (all_apps[i].info.id == "ITEM99999"));
+            if (!all_apps[i].flags.is_fpkg || is_if)
             { // if its not an fpkg or Itemzflow, skip
-                fmt::print("Skipping {}: {}", is_if ? "IF" : "Retail Game", all_apps[i].name);
+                fmt::print("Skipping {}: {}", is_if ? "IF" : "Retail Game", all_apps[i].info.name);
                 continue;
             }
 
-            if (i > all_apps[0].HDD_count){
-                log_info("Skipping external HDD app: %s ???", all_apps[i].name.c_str());
+            if (i > all_apps[0].count.HDD_count){
+                log_info("Skipping external HDD app: %s ???", all_apps[i].info.name.c_str());
                 continue;
             }
 
-            int prog = (uint32_t)(((float)i / all_apps[0].HDD_count) * 100.f);
-            ProgSetMessagewText(prog, fmt::format("{0:}\n{1:}\n{2:}\n\n {3:} {4:d}\n{5:} {6:d}", getLangSTR(REBUILDING_FOR_FPKG), all_apps[i].name, all_apps[i].id, getLangSTR(CURRENT_APP), i, getLangSTR(TOTAL_NUM_OF_APPS), all_apps[0].HDD_count).c_str());
-            log_info("App Info: %s | %i", all_apps[i].name.c_str(), i);
+            int prog = (uint32_t)(((float)i / all_apps[0].count.HDD_count) * 100.f);
+            ProgSetMessagewText(prog, fmt::format("{0:}\n{1:}\n{2:}\n\n {3:} {4:d}\n{5:} {6:d}", getLangSTR(LANG_STR::REBUILDING_FOR_FPKG), all_apps[i].info.name, all_apps[i].info.id, getLangSTR(LANG_STR::CURRENT_APP), i, getLangSTR(LANG_STR::TOTAL_NUM_OF_APPS), all_apps[0].count.HDD_count).c_str());
+            log_info("App Info: %s | %i", all_apps[i].info.name.c_str(), i);
             // function also replaces special chars for SQL smt
-            if (Fix_Game_In_DB(all_apps, i, all_apps[i].is_ext_hdd))
-                log_info("Game Fixed: %s", all_apps[i].name.c_str());
+            if (Fix_Game_In_DB(all_apps, i, all_apps[i].flags.is_ext_hdd))
+                log_info("Game Fixed: %s", all_apps[i].info.name.c_str());
             else
             {
-                log_error("Game NOT Fixed: %s", all_apps[i].name.c_str());
+                log_error("Game NOT Fixed: %s", all_apps[i].info.name.c_str());
                 failures++;
             }
         }
         sceMsgDialogTerminate();
-        loadmsg((char *)getLangSTR(REBUILDING_ADDCONT).c_str());
+        loadmsg((char *)getLangSTR(LANG_STR::REBUILDING_ADDCONT).c_str());
         addcont_dlc_rebuild("/system_data/priv/mms/addcont.db", false);
         //addcont_dlc_rebuild("/system_data/priv/mms/addcont.db", true);
-        msgok(NORMAL, fmt::format("{0:}: {1:d}\n{2:}: {3:d}", getLangSTR(NUMB_OF_FIXED_APPS), all_apps[0].HDD_count-failures, getLangSTR(NOT_FIXED), failures));
+        msgok(MSG_DIALOG::NORMAL, fmt::format("{0:}: {1:d}\n{2:}: {3:d}", getLangSTR(LANG_STR::NUMB_OF_FIXED_APPS), all_apps[0].count.HDD_count-failures, getLangSTR(LANG_STR::NOT_FIXED), failures));
     }    
 }
 
 void rebuild_dlc_db(){
-    loadmsg((char *)getLangSTR(REBUILDING_ADDCONT).c_str());
+    loadmsg((char *)getLangSTR(LANG_STR::REBUILDING_ADDCONT).c_str());
     addcont_dlc_rebuild("/system_data/priv/mms/addcont.db", true);
     if(addcont_dlc_rebuild("/system_data/priv/mms/addcont.db", false))
-       ani_notify(NOTIFI_SUCCESS, getLangSTR(ADDCONT_REBUILT), "");
+       ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::ADDCONT_REBUILT), "");
     else
-       ani_notify(NOTIFI_WARNING, getLangSTR(ADDCONT_FAILED), "");
+       ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::ADDCONT_FAILED), "");
 
     sceMsgDialogTerminate();
 
 }
 
-void print_Apps_Array(std::vector<item_t> &b)
+void print_Apps_Array(ThreadSafeVector<item_t> &b)
 {
-    for (int i = 0; i <= b.at(0).token_c; i++)
+    for (int i = 0; i <= b.at(0).count.token_c; i++)
     {
-        fmt::print("b[{0:d}].token_d[0].off ptr: {1:}", i, b.at(i).id);
-        fmt::print("b[{0:d}].token_d[1].off ptr: {1:}", i, b.at(i).name);
+        fmt::print("b[{0:d}].token_d[0].off ptr: {1:}", i, b.at(i).info.id);
+        fmt::print("b[{0:d}].token_d[1].off ptr: {1:}", i, b.at(i).info.name);
     }
 }
-void delete_apps_array(std::vector<item_t> &apps_arr)
+void delete_apps_array(ThreadSafeVector<item_t> &apps_arr)
 {
     if(apps_arr.empty())
         return;
 
-    for (int i = 1; i <= apps_arr.at(0).token_c; i++)
+    for (int i = 1; i <= apps_arr.at(0).count.token_c; i++)
     {
-        if (apps_arr.at(i).texture > GL_NULL){
-            glDeleteTextures(1, &apps_arr.at(i).texture);
-            apps_arr.at(i).texture = GL_NULL;
+        GLuint text = apps_arr.at(i).icon.texture.load();
+        if (text > GL_NULL){
+            glDeleteTextures(1, &text);
+            apps_arr.at(i).icon.texture = GL_NULL;
         }
     }
 
@@ -2305,3 +2319,13 @@ std::ifstream::pos_type file_size(const char* filename)
     return in.tellg(); 
 }
 
+std::string NormalizeFWVersion(int version) {
+    std::string versionString = fmt::format("{:x}", version);
+    versionString.insert(1, ".");
+    std::string::size_type pos;
+    while ((pos = versionString.find("0000")) != std::string::npos) {
+            versionString.erase(pos, 4); // 4 is the length of "0000"
+    }
+
+    return versionString;
+}

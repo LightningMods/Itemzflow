@@ -6,16 +6,17 @@
     2020, masterzorag
 */
 
-#include <defines.h>
-#if defined(__ORBIS__)
+#include "defines.h"
+#include "GLES2_common.h"
+#include "utils.h"
+#ifdef __ORBIS__
 #include "shaders.h"
 #else
 #include "pc_shaders.h"
 #endif
 
-#include <GLES2_common.h>
 /* glsl programs */
-static GLuint glsl_Program[3];
+static GLuint glsl_Program[NUM_OF_PROGRAMS];
 static GLuint curr_Program;  // the current one
 
 extern vec2   resolution;
@@ -27,23 +28,36 @@ static GLint  u_time_location;
  // from main.c
 extern double u_t;
 
+
 /* translate px vector to normalized coord */
 vec2 px_pos_to_normalized(vec2 *pos)
 {
     return 2. / resolution * (*pos) - 1.;
 }
 
+void on_GLES2_Update1(double time)
+{
+    for(int i = 0; i < NUM_OF_PROGRAMS; ++i)
+    {
+        glUseProgram(glsl_Program[i]);
+        // write the value to the shaders
+        glUniform1f(glGetUniformLocation(glsl_Program[i], "u_time"), time);
+    }
+
+}
+
 /*================= RECT SHADERS  =================================*/
+
 
 void ORBIS_RenderFillRects_init(int width, int height)
 {
-    resolution = (vec2){(float)width, (float)height};
+    resolution = (vec2){ width, height };
 
     curr_Program = glsl_Program[0] = BuildProgram(rects_vs0, rects_fs0, rects_vs0_length, rects_fs0_length);
     curr_Program = glsl_Program[1] = BuildProgram(rects_vs1, rects_fs1, rects_vs1_length, rects_fs1_length);
     curr_Program = glsl_Program[2] = BuildProgram(rects_vs2, rects_fs2, rects_vs2_length, rects_fs2_length);
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < NUM_OF_PROGRAMS; i++)
     {
         curr_Program = glsl_Program[i];
 
@@ -65,7 +79,7 @@ void ORBIS_RenderFillRects_init(int width, int height)
 
 void ORBIS_RenderFillRects_fini(void)
 {
-    for(int i = 0; i < 3; ++i)
+    for(int i = 0; i < NUM_OF_PROGRAMS; ++i)
     {
         if (glsl_Program[i]) glDeleteProgram(glsl_Program[i]), glsl_Program[i] = 0;
     }
@@ -111,18 +125,19 @@ void ORBIS_RenderDrawLines(//SDL_Renderer *renderer,
 
 
 /* draw a white box around selected rect */
-void ORBIS_RenderDrawBox(enum SH_type SL_program, const vec4 *rgba, const vec4 *r)
+void ORBIS_RenderDrawBox(enum SH_type SL_program, const vec4 &rgba, vec4 &r)
 {
-    if(rgba) color = *rgba;
+    
+    color = rgba;
     // backup current color
     vec4 curr_color = color;
     // a box is 4 segments joining 2 points
     vec2 b[4 * 2];
     // 1 line for each 2 points
-    b[0] = r->xy,  b[1] = r->xw;
-    b[2] = r->xw,  b[3] = r->zw;
-    b[4] = r->zw,  b[5] = r->zy;
-    b[6] = r->zy,  b[7] = r->xy;
+    b[0] = r.xy,  b[1] = r.xw;
+    b[2] = r.xw,  b[3] = r.zw;
+    b[4] = r.zw,  b[5] = r.zy;
+    b[6] = r.zy,  b[7] = r.xy;
     // select shader to use
     curr_Program = glsl_Program[SL_program];
     // gles render all lines
@@ -130,11 +145,12 @@ void ORBIS_RenderDrawBox(enum SH_type SL_program, const vec4 *rgba, const vec4 *
     // restore current color
     color = curr_color;
 }
-
-/* main function to draw FillRects */
-void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 *rgba, const vec4 *rects, int count)
+void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 &rgba, std::vector<vec4> &rects, int count)
 {
-    if(rgba) color = *rgba;
+
+    if(rects.size() < count) return;
+
+    color = rgba;
     // (4 float pairs!)
     GLfloat vertices[8];
     // select shader to use
@@ -150,10 +166,10 @@ void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 *rgba, const vec4
     /* emit a triangle strip for each rectangle */
     for(int i = 0; i < count; ++i)
     {
-        const vec4 *rect = &rects[i];
+        const vec4 rect = rects[i];
 
-        GLfloat xMin = rect->x,  xMax = rect->z,
-                yMin = rect->y,  yMax = rect->w;
+        GLfloat xMin = rect.x,  xMax = rect.z,
+                yMin = rect.y,  yMax = rect.w;
         /* (x, y) for 4 points: 8 */
         vertices[0] = xMin;  vertices[1] = yMin;
         vertices[2] = xMax;  vertices[3] = yMin;
@@ -174,11 +190,40 @@ void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 *rgba, const vec4
 }
 
 /* draw filling color bar */
-void GLES2_DrawFillingRect(vec4* r, // float/normalized rectangle
-    vec4* c, // normalized color
-    double* percentage) // how much filled from left
+void GLES2_DrawFillingRect(std::vector<vec4> &r, // float/normalized rectangle
+                           vec4 &c, // normalized color
+                const double percentage) // how much filled from left
 {   // shrink frect RtoL by_percentage
-    r->z = r->x + (r->z - r->x) * (*percentage / 100.f);
-    //  log_info( "%.2f %.2f, %.2f, %.2f %f", r.x, r.y, r.z, r.w, dfp);
+    if(r.empty())
+         return;
+    r[0].z = r[0].x + (r[0].z - r[0].x) * (percentage / 100.f);
+    //log_info("p %f", percentage);
+   // log_info( "%.2f %.2f, %.2f, %.2f %f", c.x, c.y, c.z, c.w, percentage);
+//  log_info( "%.2f %.2f, %.2f, %.2f %f", r.x, r.y, r.z, r.w, dfp);
     ORBIS_RenderFillRects(USE_COLOR, c, r, 1);
 }
+
+void render_button(GLuint btn, float h, float w, float x, float y, float multi)
+{
+
+    vec4 r;
+    vec2 s = (vec2){w / multi, h / multi}, p = (resolution - s);
+    p.y = y;
+    p.x = x;
+    s += p;
+    // convert to normalized coordinates
+    r.xy = px_pos_to_normalized(&p);
+    r.zw = px_pos_to_normalized(&s);
+    on_GLES2_Render_icon(USE_COLOR, btn, 2, r, NULL);
+}
+/*
+#include "buttons/btn_options.h"
+GLuint options = GL_NULL, btn_x = GL_NULL;
+void ORBIS_DrawControls(float x, float y)
+{
+    if(!options)
+        options = load_png_data_into_texture(btn_options_png.data, btn_options_png.size);
+
+    render_button(options, 84., 145., x, y, 1.5);
+}
+*/

@@ -22,10 +22,10 @@
 #include <iostream>
 #ifdef __ORBIS__
 #include <user_mem.h>
+#include <dumper.h>
+#include "ipc_client.hpp"
 #endif
-#if defined(__cplusplus)
-extern "C" {
-#endif
+#include "ipc_client.hpp"
 #define DIM(x)  (sizeof(x)/sizeof(*(x)))
 #define KB(x)   ((size_t) (x) << 10)
 #define MB(x)   ((size_t) (x) << 20)
@@ -78,48 +78,17 @@ typedef struct
     enum  AppType appType;
 } AppStatus;
 
-enum MSG_DIALOG {
+namespace MSG_DIALOG {
+
+typedef enum  {
     NORMAL,
     FATAL,
     WARNING
+} MSG_DIALOG_TYPE;
+
 };
 
 extern uint32_t daemon_appid;
-enum IPC_Ret
-{
-    INVALID = -1,
-    NO_ERROR = 0,
-    OPERATION_FAILED = 1,
-    FUSE_IP_ALREADY_SET = 3,
-    FUSE_IP_NOT_SET = 4,
-    FUSE_FW_NOT_SUPPORTED = 5,
-    DEAMON_UPDATING = 100
-};
-
-
-enum IPC_Commands
-{
-        
-    MACGUFFIN_CMD = 69,
-    CMD_SHUTDOWN_DAEMON = 0,
-    CONNECTION_TEST = 1,
-    ENABLE_HOME_REDIRECT = 2,
-    DISABLE_HOME_REDIRECT = 3,
-    GAME_GET_MINS = 4,
-    GAME_GET_START_TIME = 5,
-    CRITICAL_SUSPEND = 6,
-    INSTALL_IF_UPDATE = 7,
-    RESTART_FTP_SERVICE = 8,
-    FUSE_SET_SESSION_IP = 9,
-    FUSE_SET_DEBUG_FLAG = 10,
-    FUSE_START_W_PATH = 11,
-    RESTART_FUSE_FS = 12,
-    DEAMON_UPDATE = 100,
-};
-
-
-
-
 bool IPCOpenIfNotConnected();
 
 typedef struct SceNetEtherAddr {
@@ -170,7 +139,7 @@ typedef enum {
 
 bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value);
 
-//#define assert(expr) if (!(expr)) msgok(FATAL, "Assertion Failed!");
+//#define assert(expr) if (!(expr)) msgok(MSG_DIALOG::FATAL, "Assertion Failed!");
 
 #define YES 1
 #define NO  2
@@ -215,6 +184,7 @@ enum CHECK_OPTS
 
 #define SCE_SYSMODULE_INTERNAL_COMMON_DIALOG 0x80000018
 #define SCE_SYSMODULE_INTERNAL_SYSUTIL 0x80000018
+extern int g_idx;
 
 // indexed options
 /*
@@ -230,7 +200,7 @@ typedef enum Dump_Options {
 }  Dump_Options;
 */
 
-extern Dump_Multi_Sels dump;
+extern multi_select_options::Dump_Multi_Sels dump;
 
 enum SORT_APPS_BY {
     SORT_NA = -1,
@@ -321,9 +291,9 @@ typedef struct
     std::unordered_map<int, bool> setting_bools;
 
     int lang, FTP_Port, ItemzCore_AppId, ItemzDaemon_AppId;
-    Sort_Multi_Sel sort_by;
-    Dump_Multi_Sels Dump_opt;
-    Uninstall_Multi_Sel un_opt;
+    multi_select_options::Sort_Multi_Sel sort_by;
+    multi_select_options::Dump_Multi_Sels Dump_opt;
+    multi_select_options::Uninstall_Multi_Sel un_opt;
     Sort_Category sort_cat;
     
     // more options
@@ -341,36 +311,11 @@ extern bool current_app_is_fpkg;
 bool LoadOptions(ItemzSettings *set);
 bool SaveOptions(ItemzSettings *set);
 bool Keyboard(const char* Title, const char* initialTextBuffer, char* out_buffer, bool keypad = false);
-IPC_Ret IPCMountFUSE(const char* ip, const char* path, bool debug_mode);
 
 
 // sysctl
-uint32_t ps4_fw_version(void);
-bool is_goldhen_loaded();
-bool copy_dir(const char* sourcedir, const char* destdir);
 extern bool is_connected_app;
-size_t CalcAppsize(const char* filename);
-const char* cutoff(const char* str, int from, int to);
-int getjson(int Pagenumb, char* cdn, bool legacy);
 bool MD5_hash_compare(const char* file1, const char* hash);
-bool copyFile(std::string source, std::string dest, bool show_progress);
-void ProgSetMessagewText(int prog, const char* fmt, ...);
-bool app_inst_util_uninstall_patch(const char* title_id, int* error);
-bool app_inst_util_uninstall_game(const char *title_id, int *error);
-int check_store_from_url(int page_number, char* cdn, enum CHECK_OPTS opt);
-int check_download_counter(ItemzSettings* set, char* title_id);
-bool rmtree(const char path[]);
-void setup_store_assets(ItemzSettings* get);
-int GetMessageOption();
-int OpenConnection(const char* name);
-bool IPCOpenConnection();
-int IPCReceiveData(uint8_t* buffer, int32_t size);
-int IPCSendData(uint8_t* buffer, int32_t size);
-int IPCCloseConnection();
-#define DAEMON_BUFF_MAX 100
-void GetIPCMessageWithoutError(uint8_t* buf, uint32_t sz);
-int mountfs(const char* device, const char* mountpoint, const char* fstype, const char* mode, uint64_t flags);
-int check_free_space(const char* mountPoint);
 unsigned int usbpath();
 #define MAX_MESSAGE_SIZE    0x1000
 #define MAX_STACK_FRAMES    60
@@ -415,14 +360,11 @@ typedef struct OrbisUserServiceInitializeParams {
 } OrbisUserServiceInitializeParams;
 
 
-int sceUserServiceGetRegisteredUserIdList(OrbisUserServiceRegisteredUserIdList *);
-int sceUserServiceGetUserName(int, char *, const size_t);
 
 #define SCE_LNC_UTIL_ERROR_ALREADY_RUNNING 0x8094000c
 #define USER_PATH_HDD   "/system_data/savedata/%08x/db/user/savedata.db"
 
 extern std::string title;
-extern std::string title_id;
 extern std::string pic_path;
 extern std::string icon_path;
 
@@ -441,7 +383,8 @@ void SIG_Handler(int sig_numb);
 
 int ItemzLocalKillApp(uint32_t appid);
 int Close_Game();
-extern pthread_mutex_t notifcation_lock, disc_lock, usb_lock;
+//extern pthread_mutex_t notifcation_lock, disc_lock, usb_lock;
+extern std::mutex disc_lock, notifcation_lock, usb_lock;
 typedef struct
 {
     unsigned int size;
@@ -472,7 +415,7 @@ typedef enum
 
 typedef struct
 {
-    layout_t *last_layout;
+    layout_t * last_layout;
     int (*fs_func)(std::string file, std::string full_path);
     std::string selected_file, selected_full_path;
     view_t last_v;
@@ -491,10 +434,13 @@ typedef enum
     OTHER_APP_OPEN,
 } GameStatus;
 
-extern GameStatus app_status;
+extern std::atomic<GameStatus> app_status;
 
 bool is_sfo(const char* input_file_name);
 int ItemzLaunchByUri(const char *uri);
+#ifdef __cplusplus
+extern "C" {
+#endif
 int sceUserServiceGetForegroundUser(u32 *userid);
 int32_t sceSystemServiceHideSplashScreen();
 int32_t sceSystemServiceParamGetInt(int32_t paramId, int32_t *value);
@@ -552,10 +498,29 @@ int64_t sys_dynlib_dlsym(int64_t moduleHandle, const char* functionName, void* d
 uint32_t sceKernelGetCpuTemperature(uint32_t* res);
 int sceKernelAvailableFlexibleMemorySize(size_t* free_mem);
 int sceAppInstUtilAppExists(const char* tid, int* flag);
+int sceKernelOpenEventFlag(void* event, const char* name);
+int sceKernelCloseEventFlag(void* event);
+int sceKernelPollEventFlag(void* ef, uint64_t bitPattern, uint32_t waitMode, uint64_t *pResultPat);
+int GetMountedUsbMassStorageIndex();
+int sceSystemServiceLaunchApp(const char* titleId, const char* argv[], LncAppParam* param);
+int sceShellCoreUtilRequestEjectDevice(const char* devnode);
+unsigned char* orbisFileGetFileContent(const char* filename);
+extern size_t _orbisFile_lastopenFile_size;
+int sceKernelBacktraceSelf(callframe_t frames[], size_t numBytesBuffer, uint32_t *pNumReturn, int mode);
+int32_t sceKernelVirtualQuery(const void *, int, OrbisKernelVirtualQueryInfo *, size_t);
+int sceKernelGetdents(int fd, char *buf, int nbytes);
+int sceSysUtilSendSystemNotificationWithText(int messageType, const char* message);
+uint64_t sceKernelReadTsc(void);
+uint64_t sceKernelGetProcessTime(void);
+uint64_t sceKernelGetTscFrequency(void);
+int64_t sceKernelSendNotificationRequest(int64_t unk1, const char* Buffer, size_t size, int64_t unk2);
+int sceUserServiceGetRegisteredUserIdList(OrbisUserServiceRegisteredUserIdList *);
+int sceUserServiceGetUserName(int, char *, const size_t);
+#ifdef __cplusplus
+}
+#endif
 
-
-const char* Language_GetName(int m_Code);
-int progstart(char* format, ...);
+int progstart(const char* format, ...);
 int app_inst_util_get_size(const char* title_id);
 bool app_inst_util_uninstall_ac(const char* content_id, const char* title_id, int* error);
 bool app_inst_util_uninstall_game(const char *title_id, int *error);
@@ -563,28 +528,14 @@ bool touch_file(const char* destfile);
 void dump_frame();
 void trigger_dump_frame();
 
-/*=================== IPC SHIT================================*/
-void GetIPCMessageWithoutError(uint8_t* buf, uint32_t sz);
-bool IPCOpenConnection();
-int IPCReceiveData(uint8_t* buffer, int32_t size);
-int IPCSendData(uint8_t* buffer, int32_t size);
-int IPCCloseConnection();
-IPC_Ret IPCSendCommand(enum IPC_Commands cmd, uint8_t* IPC_BUFFER);
-/*===================++++++=================================*/
 extern bool reboot_app;
 bool IS_ERROR(uint32_t ret);
-extern vertex_buffer_t *test_v; // pixelshader vbo
 bool MD5_file_compare(const char* file1, const char* file2);
-void Kill_BigApp(GameStatus &status);
+void Kill_BigApp(std::atomic<GameStatus> &status);
 void render_button(GLuint btn, float h, float w, float x, float y, float multi);
 bool GameSave_Info(save_entry_t *item, int off);
-int sceKernelOpenEventFlag(void* event, const char* name);
-int sceKernelCloseEventFlag(void* event);
-int sceKernelPollEventFlag(void* ef, uint64_t bitPattern, uint32_t waitMode, uint64_t *pResultPat);
-int GetMountedUsbMassStorageIndex();
-int sceSystemServiceLaunchApp(const char* titleId, const char* argv[], LncAppParam* param);
 bool extract_zip(const char* zip_file, const char* dest_path);
-bool power_settings(Power_control_sel sel);
+bool power_settings(multi_select_options::Power_control_sel sel);
 void relaunch_timer_thread();
 enum update_ret{
     IF_UPDATE_FOUND,
@@ -595,15 +546,6 @@ update_ret check_update_from_url(const char* tid);
 void launch_update_thread();
 bool shellui_for_lockdown(bool unpatch);
 void mkdirs(const char* dir);
-int sceShellCoreUtilRequestEjectDevice(const char* devnode);
-
-unsigned char* orbisFileGetFileContent(const char* filename);
-extern size_t _orbisFile_lastopenFile_size;
-int sceKernelBacktraceSelf(callframe_t frames[], size_t numBytesBuffer, uint32_t *pNumReturn, int mode);
-int32_t sceKernelVirtualQuery(const void *, int, OrbisKernelVirtualQueryInfo *, size_t);
-int sceKernelGetdents(int fd, char *buf, int nbytes);
-int sceSysUtilSendSystemNotificationWithText(int messageType, const char* message);
-int64_t sceKernelSendNotificationRequest(int64_t unk1, const char* Buffer, size_t size, int64_t unk2);
 bool addcont_dlc_rebuild(const char* db_path, bool ext_hdd);
 bool Reactivate_external_content(bool is_addcont_open);
 void Stop_Music();
@@ -668,10 +610,6 @@ struct current_song_t {
 
 extern current_song_t current_song; 
 
-///int fuse_test();
-#if defined(__cplusplus)
-}
-#endif
 enum mp3_status_t{
     MP3_STATUS_STARTED,
     MP3_STATUS_PLAYING,
@@ -681,33 +619,40 @@ enum mp3_status_t{
 #ifndef __ORBIS__   
 void sceMsgDialogTerminate(void);
 #endif
-extern std::vector<item_t> mp3_playlist;
+extern ThreadSafeVector<item_t> mp3_playlist;
 double CalcFreeGigs(const char* path);
 bool is_fpkg(std::string pkg_path);
+bool app_inst_util_uninstall_patch(const char* title_id, int* error);
 bool patch_lnc_debug();
 extern bool is_remote_va_launched;
+int check_free_space(const char *mountPoint);
 bool do_update(std::string  url);
-void SaveData_Operations(SAVE_Multi_Sel sv, std::string tid, std::string path);
+void SaveData_Operations(multi_select_options::SAVE_Multi_Sel sv, std::string tid, std::string path);
 struct sockaddr_in IPCAddress(uint16_t port);
 bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER filter, bool for_fs_browser);
 bool is_if_vapp(std::string tid);
-void delete_apps_array(std::vector<item_t> &b);
-void index_items_from_dir_v2(std::string dirpath, std::vector<item_t> &out_vec);
-void refresh_apps_for_cf(Sort_Multi_Sel op, Sort_Category cat = NO_CATEGORY_FILTER);
+void delete_apps_array(ThreadSafeVector<item_t> &b);
+void index_items_from_dir_v2(std::string dirpath, ThreadSafeVector<item_t> &out_vec);
+void refresh_apps_for_cf(multi_select_options::Sort_Multi_Sel op, Sort_Category cat = NO_CATEGORY_FILTER);
 bool change_game_name(std::string new_title, std::string tid, std::string sfo_path);
 bool If_Save_Exists(const char *userPath, save_entry_t *item);
 uint32_t Launch_App(std::string TITLE_ID, bool silent = false, int index = 0 );
-bool StartFileBrowser(view_t vt, layout_t *l, int (*callback)(std::string fn, std::string fp), FS_FILTER filter);
+bool StartFileBrowser(view_t vt, layout_t & l, int (*callback)(std::string fn, std::string fp), FS_FILTER filter);
 mp3_status_t MP3_Player(std::string path);
 bool install_IF_Theme(std::string theme_path);
 void notify(const char* message);
 // https://github.com/OSM-Made/PS4-Notify/blob/c6d259bc5bd4aa519f5b0ce4f5e27ef7cb01ffdd/Notify.cpp
 void notifywithicon(const char* IconURI, const char* MessageFMT, ...);
-void msgok(enum MSG_DIALOG level, std::string in);
+typedef struct Button{
+    wchar_t *label;
+    int result;
+}Button;
+void msgok(MSG_DIALOG::MSG_DIALOG_TYPE level, std::string in);
+int Messagebox(const char* title, const wchar_t* text, const Button* buttons, int numButtons);
 void loadmsg(std::string in);
 std::vector<uint8_t> readFile(std::string filename);
 std::ifstream::pos_type file_size(const char* filename);
-bool Fix_Game_In_DB(std::vector<item_t> &app_info, int index, bool is_ext_hdd);
+bool Fix_Game_In_DB(ThreadSafeVector<item_t> &app_info, int index, bool is_ext_hdd);
 int check_syscalls();
 int mount_fuse(const char* device, const char* mountpoint);
 extern int (*rejail_multi)(void);
@@ -723,3 +668,16 @@ std::string sanitizeString(const std::string& str);
 void GLES2_Draw_idle_info(void);
 bool get_ip_address(std::string &ip);
 int get_folder_size(const char *file_path, u64 *size);
+extern ThreadSafeVector<item_t> all_apps;
+std::vector<std::tuple<std::string, std::string, std::string>> query_dlc_database(const std::string& title_id);
+uint32_t ps4_fw_version(void);
+bool is_png_vaild(const char *relative_path, int *width, int *height);
+layout_t& getLayoutbyView(view_t view);
+bool copyFile(std::string source, std::string dest, bool show_progress);
+void ProgSetMessagewText(int prog, const char* fmt, ...);
+bool rmtree(const char path[]);
+void scan_for_disc();
+unsigned char* load_png_asset(const char* relative_path, std::atomic<bool> &is_loaded, struct AppIcon::ImageData& data);
+void load_png_cover_data_into_texture(struct AppIcon::ImageData& data, std::atomic<bool>& needs_loaded, std::atomic<GLuint>& tex);
+void ProgressUpdate(uint32_t prog, std::string fmt);
+#define UNUSED(x) (void)X

@@ -7,12 +7,10 @@ LangStrings* stropts;
 bool lang_is_initialized = false;
 int32_t PS4GetLang() {
     int32_t lang;
-
     if (sceSystemServiceParamGetInt(1, &lang) != 0) {
         logshit("Unable to qet language code");
         return 0x1;
     }
-
     return lang;
 }
 
@@ -25,7 +23,7 @@ char* getLangSTR(enum Lang_STR str)
         }
         else
         {
-            if (stropts->strings[str] != NULL)
+            if (stropts->strings[str])
                 return stropts->strings[str];
             else
                 return stropts->strings[STR_NOT_FOUND];
@@ -127,8 +125,10 @@ bool LoadLangs(int LangCode)
         else
             lang_is_initialized = true;
     }
-    else
+    else{
+        msgok("LoadLangs failed");
         return false;
+    }
 
     return true;
 }

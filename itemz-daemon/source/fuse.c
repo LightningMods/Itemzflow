@@ -10,21 +10,39 @@
 #include <sys/mount.h>
 #include <sys/time.h>
 #include <stddef.h>
-#define FUSE_USE_VERSION 26
-#include "fuse/fuse.h"
 #include "defines.h"
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <dirent.h>
 
-int fuse_ret  = -1;
-int sceKernelSetBesteffort(int besteffort, int priority);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wvisibility"
+
 // NOTE that max_read will be ignored when mounting so if you want to change it then you
 // also have to change the fuse mounting func 
 //DEBUG 
 //char* argv[] = { "dummy", "/host", "-o", "allow_other", "-o", "rw", "-o", "use_ino", "-o", "direct_io", "-o", "attr_timeout=0.0", "-o", "max_read=262144", "-f", "-d", NULL };
 // NON-DEBUG
 //char* argv[] = { "dummy", "/hostapp", "-o", "allow_other", "-o", "rw", "-o", "use_ino", "-o", "direct_io", "-o", "attr_timeout=0.0", "-o", "max_read=262144", "-f", NULL };
+
+#include <sys/sysctl.h>
+
+uint32_t sdkVersion = -1;
+
+uint32_t ps4_fw_version(void)
+{
+    //cache the FW Version
+    if (0 < sdkVersion) {
+        size_t   len = 4;
+        // sysKernelGetLowerLimitUpdVersion == machdep.lower_limit_upd_version
+        // rewrite of sysKernelGetLowerLimitUpdVersion
+        sysctlbyname("machdep.lower_limit_upd_version", &sdkVersion, &len, NULL, 0);
+    }
+
+    // FW Returned is in HEX
+    return (sdkVersion >> 16);
+}
+
 int fuse_kernel_patches_505(struct thread *td)
 {
    
@@ -32,7 +50,7 @@ int fuse_kernel_patches_505(struct thread *td)
 	uint8_t* kernel_ptr = (uint8_t*)kernel_base;
 	int *ksuser_enabled=(int *)(kernel_base+0x2300B88);
 	if(*ksuser_enabled == 1) // kernel already patched
-	   return NULL;
+	   return 0;
 
     cpu_disable_wp();
 	struct vfsconf *p=(struct vfsconf *)(kernel_base + 0x19FC380 );
@@ -44,6 +62,7 @@ int fuse_kernel_patches_505(struct thread *td)
 	kernel_ptr[0x3B219E]=0;     
 	kernel_ptr[0x49DFE4] = 0x0F;
 	kernel_ptr[0x49DFE5] = 0x84;
+	
 	//skip devkit/testkit/dipsw check in fuse_loader
 	kernel_ptr[0x49DDDE] = 0xEB;
 	kernel_ptr[0x49DDDF] = 0x1B;
@@ -63,7 +82,7 @@ int fuse_kernel_patches_505(struct thread *td)
 	// skip sceSblACMgrIsSystemUcred check in fuse_vfsop_statfs
 	kernel_ptr[0x4A3BED] = 0xEB;
 	kernel_ptr[0x4A3BEE] = 0x04;	
-    kernel_ptr[0x4A27FC]=0xB6;
+    kernel_ptr[0x4A27FC]=  0xB6;
     // patch kernel
     cpu_enable_wp();
 
@@ -71,7 +90,7 @@ int fuse_kernel_patches_505(struct thread *td)
     fuse_loader(NULL, 0, NULL);
 
 
-    return NULL;
+    return 0;
 }
 
 int fuse_kernel_patches_900(struct thread *td)
@@ -82,7 +101,7 @@ int fuse_kernel_patches_900(struct thread *td)
 	int *ksuser_enabled=(int *)(kernel_base+0x01B94588); //0x01B94588
 
 	if(*ksuser_enabled == 1) // kernel already patched
-	    return NULL;
+	    return 0;
 
     cpu_disable_wp();
 	struct vfsconf *p=(struct vfsconf *)(kernel_base + 0x01A7F188 ); //0x01A7F188
@@ -118,15 +137,69 @@ int fuse_kernel_patches_900(struct thread *td)
 	int (*fuse_loader)(void* m, int op, void* arg)=(void *)(kernel_base + 0x0490720);  //0x0490720
     fuse_loader(NULL, 0, NULL);
 
-    return NULL;
+    return 0;
 }
+
+int fuse_kernel_patches_672(struct thread *td)
+{
+   
+	void* kernel_base = &((uint8_t*)kernelRdmsr(0xC0000082))[-0x1C0];
+	uint8_t* kernel_ptr = (uint8_t*)kernel_base;
+	int *ksuser_enabled=(int *)(kernel_base+0x1be9498); //0x1BE9498
+
+	if(*ksuser_enabled == 1) // kernel already patched
+	    return 0;
+
+    cpu_disable_wp();
+	struct vfsconf *p=(struct vfsconf *)(kernel_base + 0x01aa0a68  ); //0x01A7F188
+	//suser_enabled in priv_check_cred
+	*ksuser_enabled=1;
+	//add jail friendly for fuse file system
+	p->vfc_flags = 0x00400000 | 0x00080000;
+	 //avoid enforce_dev_perms checks default prison_priv_check to 0
+    kernel_ptr[0x270e8e] = 0;
+    kernel_ptr[0x4b0c74] = 0x0F;
+    kernel_ptr[0x4b0c75] = 0x84;
+    //skip devkit/testkit/dipsw check in fuse_loader
+    kernel_ptr[0x4af2fe] = 0xEB;
+    kernel_ptr[0x4af2ff] = 0x1B;
+    //skip sceSblACMgrIsSyscoreProcess check in fuse_open_device
+    kernel_ptr[0x4aeb14] = 0xEB;
+    kernel_ptr[0x4aeb15] = 0x0;
+    //skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in fuse_close_device
+    kernel_ptr[0x4aec12] = 0xEB;
+    //skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in fuse_poll_device
+    kernel_ptr[0x4AF174] = 0xEB;
+    // skip sceSblACMgrIsSyscoreProcess check in fuse_vfsop_mount
+    kernel_ptr[0x4ac086] = 0xEB;
+    kernel_ptr[0x4ac087] = 0x04;
+    // skip sceSblACMgrIsMinisyscore/unknown check in fuse_vfsop_unmount
+    kernel_ptr[0x4ac7dc] = 0xEB;
+    kernel_ptr[0x4ac7dd] = 0x00;
+    // skip sceSblACMgrIsSystemUcred check in fuse_vfsop_statfs
+    kernel_ptr[0x4acb8d] = 0xEB;
+    kernel_ptr[0x4acb8e] = 0x04;
+    kernel_ptr[0x4aea2c] = 0xB6;
+    // patch kernel
+    cpu_enable_wp();
+
+	int (*fuse_loader)(void* m, int op, void* arg)=(void *)(kernel_base + 0x4af2d0);  //0x0490720
+    fuse_loader(NULL, 0, NULL);
+
+    return 0;
+}
+
 
 bool fuse_fw_supported()
 {
 	switch (ps4_fw_version())
 	{
+	case 0x507:
 	case 0x505:
 		syscall(11, fuse_kernel_patches_505);
+        return true;
+	case 0x672:
+		syscall(11, fuse_kernel_patches_672);
         return true;
 	case 0x900:
 		syscall(11, fuse_kernel_patches_900);
@@ -136,30 +209,4 @@ bool fuse_fw_supported()
 		return false;
 	  }
 	}
-}
-
-int initialize_userland_fuse(const char* mp)
-{
-    log_info("Starting FUSE ...");
-    sceKernelSetBesteffort(ULPMGR_THREAD_PRIO_BASE, 255); // set best cpu effort to highest for IO
-
-    if(!if_exists("/dev/mira")){
-	  log_info("fuse: Mira not found");
-      if(!fuse_fw_supported())
-		  return FUSE_FW_NOT_SUPPORTED;
-    }
-    else
-      log_debug("fuse: Mira found, no patches will be applied");
-	
-	struct fuse_actions args = { args.argc = 16 };
-	snprintf(args.path, sizeof(args.path)-1, "%s", mp);
-	snprintf(args.ip, sizeof(args.ip)-1, "%s", fuse_session_ip);
-	args.is_debug_mode = fuse_debug_flag;
-
-	free(fuse_session_ip), fuse_session_ip = NULL;
-    
-	unlink("/data/itemzflow_daemon/libfuse.log");
-	fuse_ret = fuse_nfs_main(args);
-	log_info("fuse: fuse_main returned %d", fuse_ret);
-	return fuse_ret;
 }

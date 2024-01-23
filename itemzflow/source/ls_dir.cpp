@@ -14,6 +14,8 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <feature_classes.hpp>
 
 /*
   Glibc does not provide a wrapper for
@@ -40,7 +42,7 @@
 int HDD_count = -1;
 const char *SPECIAL_XMB_ICON_TID[] = {APP_HOME_DATA_TID, APP_HOME_HOST_TID, DEBUG_SETTINGS_TID};
 
-extern "C" bool if_exists(const char *path)
+bool if_exists(const char *path)
 {
     /*
     int dfd = open(path, O_RDONLY, 0); // try to open dir
@@ -102,6 +104,7 @@ static int app_info(void *, const char *s, const char *n,
 bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER filter, bool for_fs_browser = false)
 {
     struct dirent *pDirent;
+    struct stat st;
     DIR *pDir = NULL;
 
     if (path.empty())
@@ -119,19 +122,28 @@ bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER
 
     while ((pDirent = readdir(pDir)) != NULL)
     {
-
-        if (strcmp(pDirent->d_name, ".") == 0 || strcmp(pDirent->d_name, "..") == 0)
+        
+        std::string upper_case_ext;
+        std::string filename = pDirent->d_name;
+        std::string full_path = path + "/" + filename;
+		
+        if (filename == "." || filename == ".." )
             continue;
+
+        int err = stat(full_path.c_str(), &st);
+		if (err == -1) {
+			log_error("%s stat returned %s", full_path.c_str(), strerror(errno));
+            continue;
+        }
 
         //log_info("d_name %s pDirent->d_type %i", pDirent->d_name, pDirent->d_type);
         // Dir is title_id, it WILL go through 3 filters
         // so lets assume they are vaild until the filters say otherwise
-        if (pDirent->d_type == DT_DIR && filter != FS_MP3_ONLY) // MP3S ONLY NO DIR NAMES
-            cvEntries.push_back(pDirent->d_name);
+        if (S_ISDIR(st.st_mode) && filter != FS_MP3_ONLY) // MP3S ONLY NO DIR NAMES
+            cvEntries.push_back(filename);
         else if (filter != FS_FOLDER) // if folders only do ntohing
         {
-            const char *ext = NULL;
-
+            std::string ext;
             switch (filter)
             {
             case FS_MP3_ONLY:
@@ -151,21 +163,21 @@ bool getEntries(std::string path, std::vector<std::string> &cvEntries, FS_FILTER
                 ext = ".zip";
                 break;
             case FS_NONE:
-                cvEntries.push_back(pDirent->d_name);
+                cvEntries.push_back(filename);
             default:
                 ext = ".lm_is_da_best"; // an ext no one will ever have
                 break;
             }
-            if (strstr(pDirent->d_name, ext))
-                cvEntries.push_back(pDirent->d_name);
+            if (filename.rfind(ext) != std::string::npos)
+                cvEntries.push_back(filename);
             else
             { // try with all caps
-                char upper_case_ext[strlen(ext) + 1];
-                for (int i = 0; i < strlen(ext); i++)
-                    upper_case_ext[i] = toupper(ext[i]);
-
-                if (strstr(pDirent->d_name, &upper_case_ext[0]))
-                    cvEntries.push_back(pDirent->d_name);
+                // Transform the string to uppercase using the lambda function 
+                upper_case_ext = ext;
+                std::transform(upper_case_ext.begin(), upper_case_ext.end(), upper_case_ext.begin(), ::toupper);
+                if(filename.rfind(upper_case_ext) != std::string::npos){
+                        cvEntries.push_back(filename);
+                }
             }
         }
     }
@@ -271,15 +283,24 @@ std::vector<uint8_t> readFile(std::string filename)
     return vec;
 }
 
-bool AppExists(std::string tid)
+bool AppExists(std::string tid, std::string &pkg_path, item_t& out_vec)
 {
-    std::string path = fmt::format("/user/app/{}/app.pkg", tid);
-    if (!if_exists(path.c_str()))
+#if defined(__ORBIS__)
+    pkg_path = fmt::format("/user/app/{}/app.pkg", tid);
+    if (!if_exists(pkg_path.c_str()))
     {
-        path = fmt::format("/mnt/ext0/user/app/{}/app.pkg", tid);
-        if (!if_exists(path.c_str()))
-            return false;
+        pkg_path = fmt::format("/mnt/ext0/user/app/{}/app.pkg", tid);
+        if (!if_exists(pkg_path.c_str())) {
+            pkg_path = fmt::format("/mnt/ext1/user/app/{}/app.pkg", tid);
+        }
+        else {
+            out_vec.flags.is_ext_hdd = true;
+        }
     }
+#else
+    pkg_path = fmt::format("{}/{}/app.pkg", APP_PATH("apps"), tid);
+#endif
+
     return true;
 }
 // the Settings
@@ -287,10 +308,10 @@ extern ItemzSettings set,
     *get;
 
 // each token_data is filled by dynalloc'd mem by strdup!
-void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std::string dirpath2, Sort_Category category)
+void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath, std::string dirpath2, Sort_Category category)
 {
     int ext_count = -1;
-
+    std::string pkg_path;
     std::string tmp, no_icon_path;
 
 #if defined(__ORBIS__)
@@ -304,8 +325,13 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
 
     log_info("Starting index_items_from_dir ...");
 
-    std::vector<std::string> cvEntries;
+    Favorites favorites;
+    if(favorites.loadFromFile(APP_PATH("favorites.dat")))
+       log_info("Favorites have beend loaded!");
+    else
+       log_warn("Failed to load favorites.dat does it exist??");
 
+    std::vector<std::string> cvEntries;
     if (!getEntries(dirpath, cvEntries, FS_FOLDER))
         log_info("failed to get dir");
     else
@@ -325,6 +351,14 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
         }
     }
 
+
+    //remove dups
+    // Sort the vector to group duplicates together
+    std::sort(cvEntries.begin(), cvEntries.end());
+
+    // Erase duplicates
+    cvEntries.erase(std::unique(cvEntries.begin(), cvEntries.end()), cvEntries.end());
+
     uint32_t entCt = cvEntries.size();
     log_debug("Have %d entries:", entCt);
 #if 0
@@ -335,11 +369,17 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
 #endif
     // add one for reserve
     entCt++;
-    out_vec.resize(entCt);
 
-    int i = 1; // vaild app count
+    item_t if_app;
+    if_app.info.picpath = no_icon_path;
+    if_app.info.name = "ItemzCore_ls_dir";
+    if_app.info.id = "ITEM99999";
+    if_app.count.HDD_count = HDD_count - 1;
+    out_vec.push_back(if_app);
+
     for (int not_used = 1; not_used < entCt; not_used++)
     {
+        item_t item;
         // we use just those token_data
         std::string fname = cvEntries[not_used - 1];
         if (!is_vapp(fname.c_str()))
@@ -349,7 +389,7 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
                 log_debug("[F1] Filtered out %s", fname.c_str());
                 continue;
             }
-#if defined(__ORBIS__)
+
 #if 0 // doesnt work for recoverying so for now we ignore
       //  skip first reserved: take care
              bool does_app_exist = false;
@@ -361,39 +401,31 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
                 }
             }
 #else
-            if (AppExists(fname))
-                log_debug("[F2] App exists %s", fname.c_str());
-            else
-            {
+            if (!AppExists(fname, pkg_path, item)){
                 log_debug("[F2] Filtered out %s, the App doesnt exist", fname.c_str());
                 continue;
             }
-
-#endif
 #endif
         }
 
-        if (i >= HDD_count - 1)
-            out_vec[i].is_ext_hdd = true;
-        else
-            out_vec[i].is_ext_hdd = false;
+        //(i >= HDD_count - 1) ? (item.flags.is_ext_hdd = true) : (item.flags.is_ext_hdd = false);
 
         if (category == FILTER_HOMEBREW)
         {
-            if (fname.find("CUSA") != std::string::npos)
+            if (fname.find("CUSA") != std::string::npos || fname.find("PPSA") != std::string::npos)
                 continue;
         }
         else if (category == FILTER_GAMES)
         {
-            if (fname.find("CUSA") == std::string::npos)
+            if (fname.find("CUSA") == std::string::npos || fname.find("PPSA") == std::string::npos)
                 continue;
         }
 
         // dynalloc for user tokens
-        out_vec[i].token_c = TOTAL_NUM_OF_TOKENS;
-        out_vec[i].name = out_vec[i].id = fname;
-        out_vec[i].extra_sfo_data.clear();
-        out_vec[i].is_ph = false;
+        item.count.token_c = TOTAL_NUM_OF_TOKENS;
+        item.info.name= item.info.id = fname;
+        item.extra_data.extra_sfo_data.clear();
+        item.flags.is_ph = false;
 #if defined(__ORBIS__)
 
         tmp = fmt::format("/user/appmeta/{}/icon0.png", fname);
@@ -408,34 +440,32 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
         tmp = fmt::format("{}/{}/icon0.png", std::string(APP_PATH("apps")), fname);
 #endif
 
-        out_vec[i].picpath = tmp;
+        item.info.picpath = tmp;
         // don't try lo load
-        out_vec[i].texture = GL_NULL; // XXX load_png_asset_into_texture(tmp);
-#if defined(__ORBIS__)
-        tmp = fmt::format("/user/app/{}/app.pkg", fname);
-        log_info("[XMB OP] TItLE ID: %s", fname.c_str());
-        if (!if_exists(tmp.c_str()))
-            tmp = fmt::format("/mnt/ext0/user/app/{}/app.pkg", fname);
-#else // on pc
-        tmp = fmt::format("{}/{}/app.pkg", std::string(APP_PATH("apps")), fname);
-#endif
-        out_vec[i].package = tmp;
+        item.icon.texture = GL_NULL; // XXX load_png_asset_into_texture(tmp);
+        item.info.package = pkg_path;
 
 #if defined(__ORBIS__)
-        out_vec[i].is_fpkg = is_fpkg(out_vec[i].package);
-        out_vec[i].app_vis = AppDBVisiable(out_vec[i].id, VIS_READ, 0);
+        item.flags.is_fpkg = is_fpkg(item.info.package);
+        item.flags.app_vis = AppDBVisiable(item.info.id, VIS_READ, 0);
 
         tmp = fmt::format("/system_data/priv/appmeta/{}/param.sfo", fname);
-        if (!if_exists(tmp.c_str()))
+        if (!if_exists(tmp.c_str())) {
+            log_info("%s: sfo %s does not exist", fname.c_str(), tmp.c_str());
             tmp = fmt::format("/system_data/priv/appmeta/external/{}/param.sfo", fname);
+        }
 
 #else // on pc
         tmp = fmt::format("{}/{}/param.sfo", APP_PATH("apps"), fname);
 
 #endif
-        out_vec[i].sfopath = tmp;
+        item.info.sfopath = tmp;
 
-        if ((category == FILTER_FPKG && !out_vec[i].is_fpkg) || (category == FILTER_RETAIL_GAMES && out_vec[i].is_fpkg))
+        if ((category == FILTER_FPKG && !item.flags.is_fpkg) || (category == FILTER_RETAIL_GAMES && item.flags.is_fpkg))
+            continue;
+
+        item.flags.is_favorite = favorites.isFavorite(item);
+        if(category == FILTER_FAVORITES && !item.flags.is_favorite)
             continue;
 
         // read sfo
@@ -443,159 +473,149 @@ void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std
         {
             if(fname == APP_HOME_DATA_TID)
             {
-                out_vec[i].picpath = "/data/APP_HOME.png";
-                out_vec[i].name = "APP_HOME(Data)";
-                out_vec[i].id = APP_HOME_DATA_TID;
+                item.info.picpath = "/data/APP_HOME.png";
+                item.info.name = "APP_HOME(Data)";
+                item.info.id = APP_HOME_DATA_TID;
             }
             else if(fname == DEBUG_SETTINGS_TID)
             {
-                out_vec[i].picpath = "/data/debug.png";
-                out_vec[i].name = "PS4 Debug Settings";
-                out_vec[i].id = DEBUG_SETTINGS_TID;
+                item.info.picpath = "/data/debug.png";
+                item.info.name = "PS4 Debug Settings";
+                item.info.id = DEBUG_SETTINGS_TID;
             }
             else if(fname == APP_HOME_HOST_TID)
             {
-                out_vec[i].picpath = asset_path("app_home_host.png");
-                out_vec[i].name = fmt::format("{} (/HOSTAPP)", getLangSTR(REMOTE_APP_TITLE));
-                out_vec[i].id = APP_HOME_HOST_TID;
+                item.info.picpath = asset_path("app_home_host.png");
+                item.info.name = fmt::format("{} (/HOSTAPP)", getLangSTR(LANG_STR::REMOTE_APP_TITLE));
+                item.info.id = APP_HOME_HOST_TID;
             }
 
-            out_vec[i].version = "0.00";
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gde"));
-            out_vec[i].is_vapp = true;
+            item.info.version = "0.00";
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gde"));
+            item.flags.is_vapp = true;
 
-            log_info("[XMB OP] SFO Name: %s", out_vec[i].name.c_str());
-            log_info("[XMB OP] SFO ID: %s", out_vec[i].id.c_str());
-            log_info("[XMB OP] SFO VERSION: %s", out_vec[i].version.c_str());
+            log_info("[XMB OP] SFO Name: %s", item.info.name.c_str());
+            log_info("[XMB OP] SFO ID: %s", item.info.id.c_str());
+            log_info("[XMB OP] SFO VERSION: %s", item.info.version.c_str());
         }
         else
         {
-            std::vector<uint8_t> sfo_data = readFile(out_vec[i].sfopath);
+
+            std::vector<uint8_t> sfo_data = readFile(item.info.sfopath);
             if (sfo_data.empty())
                 continue;
 
             SfoReader sfo(sfo_data);
 
-            std::string path = fmt::format("/user/app/ITEM00001/custom_app_names/{}.ini", out_vec[i].id);
+            std::string path = fmt::format("/user/app/ITEM00001/custom_app_names/{}.ini", item.info.id);
 
             if (if_exists(path.c_str()) && ini_parse(path.c_str(), &app_info, NULL) >= 0)
             {
                 log_info("[XMB OP] Custom Name Found");
-                out_vec[i].name = app_name_callback;
-                log_info("[XMB OP] Name Set to: %s", out_vec[i].name.c_str());
+                item.info.name= app_name_callback;
+                log_info("[XMB OP] Name Set to: %s", item.info.name.c_str());
             }
             else
             {
-                out_vec[i].name = sfo.GetValueFor<std::string>("TITLE");
+                item.info.name= sfo.GetValueFor<std::string>("TITLE");
                 if (get->lang != 1)
                 {
-                    out_vec[i].name = sfo.GetValueFor<std::string>(fmt::format("TITLE_{0:}{1:d}", (get->lang < 10) ? "0" : "", get->lang));
-                    if (out_vec[i].name.empty())
-                        out_vec[i].name = sfo.GetValueFor<std::string>("TITLE");
+                    item.info.name= sfo.GetValueFor<std::string>(fmt::format("TITLE_{0:}{1:d}", (get->lang < 10) ? "0" : "", get->lang));
+                    if (item.info.name.empty())
+                        item.info.name= sfo.GetValueFor<std::string>("TITLE");
                 }
             }
 
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("CONTENT_ID", sfo.GetValueFor<std::string>("CONTENT_ID")));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("VERSION", sfo.GetValueFor<std::string>("VERSION")));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("ATTRIBUTE_INTERNAL", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE_INTERNAL"))));
+            //    log_info("[XMB OP] %s is a favorite", item.info.id.c_str());
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CONTENT_ID", sfo.GetValueFor<std::string>("CONTENT_ID")));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("VERSION", sfo.GetValueFor<std::string>("VERSION")));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("ATTRIBUTE_INTERNAL", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE_INTERNAL"))));
             for (int z = 1; z <= 7; z++){ // SERVICE_ID_ADDCONT_ADD_1
                 std::string s = sfo.GetValueFor<std::string>(fmt::format("SERVICE_ID_ADDCONT_ADD_{0:d}", z)); 
                 if (!s.empty()){
-                    out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>(fmt::format("SERVICE_ID_ADDCONT_APPINFO_ADD_{0:d}", z), s));
+                    item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(fmt::format("SERVICE_ID_ADDCONT_APPINFO_ADD_{0:d}", z), s));
                     std::string sub = s.substr(s.find("-")+1); sub.pop_back(), sub.pop_back(), sub.pop_back();
-                    out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>(fmt::format("SERVICE_ID_ADDCONT_ADD_{0:d}", z), sub));
+                    item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(fmt::format("SERVICE_ID_ADDCONT_ADD_{0:d}", z), sub));
                 }
             }
             for (int z = 1; z <= 4; z++) // USER_DEFINED_PARAM_
-                out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>(fmt::format("USER_DEFINED_PARAM_{0:d}", z), std::to_string(sfo.GetValueFor<int>(fmt::format("USER_DEFINED_PARAM_{0:d}", z)))));
+                item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(fmt::format("USER_DEFINED_PARAM_{0:d}", z), std::to_string(sfo.GetValueFor<int>(fmt::format("USER_DEFINED_PARAM_{0:d}", z)))));
 
             for (int z = 0; z <= 30; z++) { // TITLE_
                 std::string key = fmt::format("TITLE_{0:}{1:d}", (z < 10) ? "0" : "", z);
-                out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>(key, sfo.GetValueFor<std::string>(key)));
+                item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(key, sfo.GetValueFor<std::string>(key)));
             }
             // if its a patch just set it to GD
             if (sfo.GetValueFor<std::string>("CATEGORY") == "gp")
-               out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gd"));
+               item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gd"));
             else
-                out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", sfo.GetValueFor<std::string>("CATEGORY")));
+                item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", sfo.GetValueFor<std::string>("CATEGORY")));
 
-            if (out_vec[i].extra_sfo_data["CATEGORY"] == "gd")
-                out_vec[i].is_dumpable = true;
+            if (item.extra_data.extra_sfo_data["CATEGORY"] == "gd")
+                item.flags.is_dumpable = true;
 
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("APP_TYPE", std::to_string(sfo.GetValueFor<int>("APP_TYPE"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("APP_VER", sfo.GetValueFor<std::string>("APP_VER")));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gd"));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("SYSTEM_VER",  std::to_string(sfo.GetValueFor<int>("SYSTEM_VER"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("PARENTAL_LEVEL", std::to_string(sfo.GetValueFor<int>("PARENTAL_LEVEL"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("DOWNLOAD_DATA_SIZE", std::to_string(sfo.GetValueFor<int>("DOWNLOAD_DATA_SIZE"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("ATTRIBUTE", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("ATTRIBUTE2", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE2"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("REMOTE_PLAY_KEY_ASSIGN", std::to_string(sfo.GetValueFor<int>("REMOTE_PLAY_KEY_ASSIGN"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("PT_PARAM", std::to_string(sfo.GetValueFor<int>("PT_PARAM"))));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("INSTALL_DIR_SAVEDATA", sfo.GetValueFor<std::string>("INSTALL_DIR_SAVEDATA")));
-            out_vec[i].extra_sfo_data.insert(std::pair<std::string, std::string>("IRO_TAG", std::to_string(sfo.GetValueFor<int>("IRO_TAG"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("APP_TYPE", std::to_string(sfo.GetValueFor<int>("APP_TYPE"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("APP_VER", sfo.GetValueFor<std::string>("APP_VER")));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gd"));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("SYSTEM_VER",  std::to_string(sfo.GetValueFor<int>("SYSTEM_VER"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("PARENTAL_LEVEL", std::to_string(sfo.GetValueFor<int>("PARENTAL_LEVEL"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("DOWNLOAD_DATA_SIZE", std::to_string(sfo.GetValueFor<int>("DOWNLOAD_DATA_SIZE"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("ATTRIBUTE", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("ATTRIBUTE2", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE2"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("REMOTE_PLAY_KEY_ASSIGN", std::to_string(sfo.GetValueFor<int>("REMOTE_PLAY_KEY_ASSIGN"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("PT_PARAM", std::to_string(sfo.GetValueFor<int>("PT_PARAM"))));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("INSTALL_DIR_SAVEDATA", sfo.GetValueFor<std::string>("INSTALL_DIR_SAVEDATA")));
+            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("IRO_TAG", std::to_string(sfo.GetValueFor<int>("IRO_TAG"))));
            
-            out_vec[i].version = out_vec[i].extra_sfo_data["APP_VER"];
+            item.info.version = item.extra_data.extra_sfo_data["APP_VER"];
+
 ///IRO_TAG
 
             //log_info("PARENTAL_LEVEL: %i", sfo.GetValueFor<int>("PARENTAL_LEVEL")); 
         }
-        i++;
+        out_vec.push_back(item);
     }
 
     // Skip one cover to only show it
     // place holder games
-    if (i > 2 && i < MIN_NUMBER_OF_IF_APPS)
+    int out_size = out_vec.size() - 1;
+    if (out_size < 2 || out_size < MIN_NUMBER_OF_IF_APPS)
     {
-        out_vec.resize(i + MIN_NUMBER_OF_IF_APPS - i);
-        for (int j = i; j < MIN_NUMBER_OF_IF_APPS; j++)
+        for (int j = out_size; j < MIN_NUMBER_OF_IF_APPS; j++)
         {
-            log_info("[XMB OP] Adding Placeholder Game %d", i);
-            out_vec[j].name = getLangSTR(PLACEHOLDER);
-            out_vec[j].id = "ITEM0000" + std::to_string(j);
-            out_vec[j].picpath = no_icon_path;
-            out_vec[j].version = "9.99";
-            out_vec[j].extra_sfo_data.clear();
-            out_vec[j].is_ph = true;
+            item_t pc_app;
+            log_info("[XMB OP] Adding Placeholder Game %d", j);
+            pc_app.info.name= getLangSTR(LANG_STR::PLACEHOLDER);
+            pc_app.info.id = "ITEM0000" + std::to_string(j);
+            pc_app.info.picpath = no_icon_path;
+            pc_app.info.version = "9.99";
+            pc_app.extra_data.extra_sfo_data.clear();
+            pc_app.flags.is_ph = true;
+            out_vec.push_back(pc_app);
         }
-        i += MIN_NUMBER_OF_IF_APPS - i;
     }
 
-    out_vec[0].token_c = i - 1;
-    log_info("valid count: %d", i);
-    HDD_count = i;
-    if(ext_count > 1)
-       HDD_count -= ext_count;
+    out_vec[0].count.token_c = out_size;
+    log_info("valid count: %d", out_size);
+    log_info("token_c: %i : %i", out_vec[0].count.token_c, out_size);
 
-    log_info("HDD_count: %i, arr sz: %i", HDD_count, out_vec.size());
-    if (out_vec[0].token_c >= 1)
-        out_vec.resize(i);
-    // bounds check
-    if (out_vec[0].token_c < 0)
-        out_vec[0].token_c = 0;
-
-    log_info("token_c: %i : %i", out_vec[0].token_c, i);
-    // report back
-    if (0)
-    {
-        for (int i = 1; i < out_vec[0].token_c; i++)
-            log_info("%3d: %s %p", i, out_vec[i].name.c_str(), out_vec[i].name.c_str());
+    int cc = 0;
+    for (auto item : out_vec) {
+        log_info("%d: tid: %s, name %s", cc, item.info.id.c_str(), item.info.name.c_str());
+        cc++;
     }
 
     cvEntries.clear();
 
-    out_vec[0].picpath = no_icon_path;
-    out_vec[0].name = "ItemzCore_ls_dir";
-    out_vec[0].id = "ITEM99999";
-    out_vec[0].HDD_count = HDD_count-1;
 
-    if (out_vec.size() - 1 != out_vec[0].token_c &&
-        out_vec.size() - 1 != out_vec[0].token_c + 1)
+    if (out_vec.size() - 1 != out_vec[0].count.token_c &&
+        out_vec.size() - 1 != out_vec[0].count.token_c + 1)
     {
-        log_error("[LS_ERR] out_vec.size()|%i| != out_vec[0].token_c|%i| ", out_vec.size(), out_vec[0].token_c);
-        // ani_notify(NOTIFI_WARNING, "Should NOT see this", fmt::format( "|{0:d}| != |{1:d}| ", out_vec.size(), out_vec[0].token_c));
+        log_error("[LS_ERR] out_vec.size()|%i| != out_vec[0].count.token_c|%i| ", out_vec.size(), out_vec[0].count.token_c);
+        // ani_notify(NOTIFI::WARNING, "Should NOT see this", fmt::format( "|{0:d}| != |{1:d}| ", out_vec.size(), out_vec[0].count.token_c));
     }
 }
+
 
 // from https://elixir.bootlin.com/busybox/0.39/source/df.c
 #include <stdio.h>
@@ -657,6 +677,7 @@ int check_free_space(const char *mountPoint)
 void get_stat_from_file(std::string &out_str, std::string &filepath)
 {
     struct stat fileinfo;
+    //log_info("get_stat_from_file: %s %s", filepath.c_str(), out_str.c_str());
 
     if (stat(filepath.c_str(), &fileinfo) != -1)
     {

@@ -14,6 +14,7 @@
 #include <array>
 #include <patcher.h>
 #include <sys/mount.h>
+#include "feature_classes.hpp"
 #include "log.h"
 
 double dt, u_t = 0;
@@ -22,8 +23,9 @@ int libcmi = -1;
 OrbisGlConfig* GlConf;
 OrbisPadConfig *confPad;
 bool flag=true;
-extern std::vector<item_t> all_apps;
+extern ThreadSafeVector<item_t> all_apps;
 std::atomic_bool is_idle = false;
+
 
 
 int    selected_icon;
@@ -42,7 +44,6 @@ extern "C" void standalone_main(void);
 
 extern void* __stack_chk_guard;
 std::atomic_bool is_disc_inserted = false;
-pthread_mutex_t notifcation_lock, disc_lock, usb_lock;
 std::atomic_int mins_played = MIN_STATUS_RESET;
 std::atomic_long started_epoch = MIN_STATUS_RESET;
 std::atomic_int AppVis = -1;
@@ -54,13 +55,12 @@ typedef struct UtiltiyPadConfig
 
 }UtiltiyPadConfig;
 
+
 void* ItemzCore_Util_thread(void* args) {
     int ret = -1;
-    char stack_tid[16];
     u32 userId = -1;
     bool usb_found = false;
-    // IPC IS USING C
-    char ipc_msg[100], name[100];
+    char name[100];
 
     UtiltiyPadConfig pad;
 
@@ -68,13 +68,15 @@ void* ItemzCore_Util_thread(void* args) {
     if(sceUserServiceGetForegroundUser(&userId) == ITEMZCORE_SUCCESS){
        memset(name, 0, sizeof(name));
 	   sceUserServiceGetUserName(userId, name, sizeof(name));
-       ani_notify(NOTIFI_PROFILE, fmt::format("{0:}: {1:}", getLangSTR(SIGN_IN_USER_NOTIF), name), "");
+       ani_notify(NOTIFI::PROFILE, fmt::format("{0:}: {1:}", getLangSTR(LANG_STR::SIGN_IN_USER_NOTIF), name), "");
     }
 
     time_t idle_clock = time(NULL);
 
     while (true) 
     {
+        IPC_Client& ipc = IPC_Client::getInstance();
+        std::string ipc_msg;
         if(reset_idle_timer.load()) {
             idle_clock = time(NULL);
             reset_idle_timer = false;
@@ -99,80 +101,56 @@ void* ItemzCore_Util_thread(void* args) {
         if (ret < 0 || !pad.padDataCurrent.connected) {
             // Function is thread-safe
             // Notfiy func has mutexs in place for threads
-            ani_notify(NOTIFI_GAME, getLangSTR(CON_DIS), getLangSTR(CON_DIS_2));
+            ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::CON_DIS), getLangSTR(LANG_STR::CON_DIS_2));
             is_idle = true;
             GLES2_refresh_sysinfo();
             log_error("scePadReadState: %x, userid: %x, handle: %x", ret, userId, scePadGetHandle(userId,0,0));
         }
 
-        //check if theres a disc
-        pthread_mutex_lock(&disc_lock);
-        memset(&stack_tid[0], 0, 16);
-        if ((ret = sceAppInstUtilAppGetInsertedDiscTitleId(&stack_tid[0])) >= 0 && !is_disc_inserted.load()) {
-            if (!all_apps.empty() && all_apps.size() > 1) {
-                for (int i = 0; i < all_apps[0].token_c + 1; i++) {
-                    // skip if its an FPKG
-                    if(all_apps[i].is_fpkg)
-                       continue;
-
-                   // log_info("Disc inserted: %s : %i %s", stack_tid, i , all_apps[i].id.c_str());
-                    if (all_apps[i].id.find(&stack_tid[0]) != std::string::npos) {
-                        //Store the texture ID of the inserted disc
-                        inserted_disc = i;
-                        //inserted_disc: 1 CUSA00900 1  18
-                        log_info("[UTIL] inserted_disc: %i %s %i %s %i", inserted_disc.load(), stack_tid, i, all_apps[i].id.c_str(), all_apps.size());
-                        is_disc_inserted = true;
-                        break;
-                    }
-                }
-            }
-        }
-        else if (ret == SCE_APP_INSTALLER_ERROR_DISC_NOT_INSERTED) {
-            // log_info("[UTIL] disc not inserted %x", ret);
-            inserted_disc = -999;
-            is_disc_inserted = false;
-        }
-       // else 
-          //log_info("[UTIL] disc  %x %i", ret, inserted_disc.load());
-
-        if(mins_played.load() == MIN_STATUS_RESET && //check if a game is open before asking the daemon
-        !title_id.empty() && app_status != APP_NA_STATUS) { // check if an app is already selected too, TODO: Atmoic int for app_status
-            
-            if(is_vapp(title_id)){
-                mins_played = MIN_STATUS_VAPP;
-                continue;
-            }
-            memset(&ipc_msg[0], 0, sizeof ipc_msg);
-            strcpy((char*)&ipc_msg[1], title_id.c_str());
-
-            if(is_connected_app && IPCSendCommand(GAME_GET_MINS, (uint8_t*)&ipc_msg[0]) == NO_ERROR){
-                mins_played =  atoi((const char*)&ipc_msg[0]); //convert to INT
-            }
-            else
-                mins_played = MIN_STATUS_NA;
-            
-            memset(&ipc_msg[0], 0, sizeof ipc_msg);
-            strcpy((char*)&ipc_msg[1], title_id.c_str());
-            if(is_connected_app && IPCSendCommand(GAME_GET_START_TIME, (uint8_t*)ipc_msg) == NO_ERROR)
-               started_epoch = atol((const char*)&ipc_msg[0]);
-            else
-               started_epoch = MIN_STATUS_NA;
-
-        }
-
-        pthread_mutex_unlock(&disc_lock);
+        scan_for_disc();
 
         //check if theres a usb
         if(!usb_found && usbpath() != -1){
             usb_found = true;
             //USB Notify
-            ani_notify(NOTIFI_INFO, getLangSTR(USB_NOTIFY), getLangSTR(USB_NOTIFY1));
+            ani_notify(NOTIFI::INFO, getLangSTR(LANG_STR::USB_NOTIFY), getLangSTR(LANG_STR::USB_NOTIFY1));
             log_info("[UTIL] USB Inserted");
         }
         else if (usb_found && usbpath() == -1){
            usb_found = false;
-           ani_notify(NOTIFI_INFO, getLangSTR(USB_DISCONNECTED), getLangSTR(USB_DISCONNECTED1));
+           ani_notify(NOTIFI::INFO, getLangSTR(LANG_STR::USB_DISCONNECTED), getLangSTR(LANG_STR::USB_DISCONNECTED1));
            log_info("[UTIL] USB removed");
+        }
+
+        // Replace the use of ipc_msg with vecto
+        if(title_id.get().empty() || app_status.load() == NO_APP_OPENED)
+           continue;
+
+        int BigAppid = sceSystemServiceGetAppIdOfBigApp();
+        // IS Big App Running?
+        if ((BigAppid & ~0xFFFFFF) == 0x60000000){
+            memset(name, 0, 100);
+            // Get TID of Big App
+            if(sceLncUtilGetAppTitleId(BigAppid, &name[0]) == 0){
+                // Check if its the same as the current app
+                if(title_id.get().compare(name) == 0){
+                   // log_info("[TEST] Big App is running");
+                }
+                else{
+                  //  log_info("[TEST] Big App is not running");
+                    continue;
+                }
+            }
+        }
+
+        ipc_msg = title_id.get();
+
+        if (is_connected_app && ipc.IPCSendCommand(IPC_Commands::GAME_GET_MINS, ipc_msg, true) == IPC_Ret::NO_ERROR) {
+            int result;
+            sscanf(ipc_msg.c_str(), "%d", &result);
+            mins_played = result;
+        } else {
+            mins_played = MIN_STATUS_NA;
         }
 
        sleep(1);
@@ -182,10 +160,12 @@ void* ItemzCore_Util_thread(void* args) {
 
     return NULL;
 }
+
 struct timeval last_tv;
 int button_numb = -1;
 int if_numb = -1;
 bool check_if_held = false;
+
 
 void updateController()
 {
@@ -299,14 +279,14 @@ void updateController()
         }
         if(orbisPadGetButtonPressed(ORBISPAD_SQUARE))
         {
-            log_info( "Square pressed"); 
+            log_info( "Square pressed");
             fw_action_to_cf(SQU);
             reset_idle_timer = true;
         }
         if(orbisPadGetButtonPressed(ORBISPAD_L1))
         {
             log_info( "L1 pressed");
-            if(v_curr != FILE_BROWSER)
+            if(v_curr != FILE_BROWSER_LEFT && v_curr != FILE_BROWSER_RIGHT)
                trigger_dump_frame();
 
             fw_action_to_cf(L1);
@@ -390,15 +370,31 @@ bool initApp()
 }
 
 
+
+float toMilliSeconds(uint64_t t)
+{
+	return (float)t / 1000.0f ;
+}
+
 /// for timing, fps
 #define WEN  (2048)
-unsigned int frame = 1,
-time_ms = 0;
+unsigned int frame = 1;
+float time_ms = 0.f;
 int main(int argc, char* argv[])
 {
 
     int ret = -1;
     bool speed1 = true,speed2 = false,speed3 = false;
+    vec2 pen = (vec2){ 26, 990 };
+    vec4 col = (vec4){ .8164, .8164, .8125, 1. };
+		int      fpsCount = 0;
+		uint64_t fpsTime1 = 0;
+		uint64_t fpsTime2 = 0;
+    VertexBuffer fps_vbo;
+    std::chrono::time_point<std::chrono::system_clock> now, prev;
+    std::chrono::steady_clock::time_point lastUpdate;
+   // vec4 c = col * .75f;
+
     pthread_t utility_thread = NULL;
     /* load custom .prx, resolve and call a function */
     rejail_multi = (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "rejail_multi");
@@ -411,14 +407,7 @@ int main(int argc, char* argv[])
     else
         goto error;
 
-    if (Start_IF_internal_Services(atoi(argv[0])) == INIT_FAILED) goto error;
-
-    if (pthread_mutex_init(&notifcation_lock, NULL) != 0 ||
-        pthread_mutex_init(&disc_lock, NULL) != 0 ||
-        pthread_mutex_init(&usb_lock, NULL) != 0) {
-        log_error("mutex init has failed");
-        goto error;
-    }
+    if (Start_IF_internal_Services(argv[0]) == INIT_FAILED) goto error;
 
     // init some libraries
     flag = initApp();
@@ -440,13 +429,17 @@ int main(int argc, char* argv[])
 
 
     /// reset timers
-    time_ms = get_time_ms();
-    gettimeofday(&t1, NULL);
-    t2 = t1;
+    now = std::chrono::system_clock::now();
+    time_ms = get_time_ms(now);
+
+    lastUpdate = std::chrono::steady_clock::now();
 
     //close any still running dialogs
     sceMsgDialogTerminate();
-    gettimeofday(&last_tv, NULL);
+
+    // Initialize FPS counter
+    fpsTime1 = sceKernelGetProcessTime();
+    prev = std::chrono::system_clock::now();
 
     /// enter main render loop
     while (flag)
@@ -454,6 +447,7 @@ int main(int argc, char* argv[])
         //skip the first frame 
         //so theres no race between 
         //the countroller update and the GLES UI
+
          if (frame != 1)
             updateController();
 
@@ -497,39 +491,57 @@ int main(int argc, char* argv[])
             // Render ItemzCore
             Render_ItemzCore();
 
+            fpsCount++;
+
+			if (fpsCount == 120 ) {
+                fpsTime2 = sceKernelGetProcessTime();
+                float time =  get_time_ms(prev)  * 1000.0f;
+                float avgFrameTime = time / 60.0f;
+                fps_vbo = VertexBuffer( "vertex:3f,tex_coord:2f,color:4f" );
+				float s_fps = 60.0f / toMilliSeconds(fpsTime2 - fpsTime1) * 1000.0f;
+                std::string str = fmt::format("DEBUG FPS: {0:.2f}", s_fps);
+                vec2 bk = pen;
+                texture_font_load_glyphs(sub_font, str.c_str());
+                fps_vbo.add_text(sub_font, str, col, bk);
+                str = fmt::format("DEBUG ms: {0:.2f}", avgFrameTime);
+               // log_info("%.f ", avgFrameTime);
+                texture_font_load_glyphs(sub_font, str.c_str());
+                bk.x = pen.x;
+                bk.y -= 30;
+                fps_vbo.add_text(sub_font, str, col, bk);
+
+				fpsTime1 = fpsTime2;
+				fpsCount = 0;
+			}
+            //fps_vbo.render_vbo(NULL);
+
+
             /// get timing, fps
             if (!(frame % WEN))
             {
-                //ItemzCore funcs
-                double const_1000 = 1000.0f;
-                uint64_t now = get_time_ms();
-                uint64_t frame_time = now - time_ms;
-                double time_to_draw = frame_time / const_1000;
-                double framerate = const_1000 / time_to_draw;
+                float ti = get_time_ms(now);
+                double framerate = 1000.f / ti;
                 log_info("--------------------------------------------------");
-                log_info("[Render] time: %lums FPS: %.3lf", frame_time, framerate);
+                log_info("[Render] AVG_time: %.3lf ms AVG_FPS: %.3lf", ti, framerate);
                 print_memory();
                 //reset Frame so we dont overflow later in release
                 frame = 1;
                 // MIN_STATUS_RESET wait for 120 frames to reset the status
                 mins_played = MIN_STATUS_RESET;
                 log_info("---------------------------------------------------");
-                time_ms = now;
+                //time_ms = now;
             }
-            frame++;
             
             if (1) // update for the GLES uniform time
             {
-                gettimeofday(&t2, NULL);
-                // calculate delta time
-                dt = t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec) * 1e-6;
-
-                t1 = t2;
-                // update total time
-                u_t += dt;
+                auto now = std::chrono::steady_clock::now();
+                dt = std::chrono::duration_cast<std::chrono::microseconds>(now - lastUpdate).count() / 1000000.0f;
+                lastUpdate = now; 
+                u_t += dt; 
             }
-            orbisGlSwapBuffers();  /// flip frame
 
+            orbisGlSwapBuffers();  /// flip frame
+            frame++;
 
             MP3_Player(get->setting_strings[MP3_PATH]);
             dump_frame();
@@ -538,7 +550,7 @@ int main(int argc, char* argv[])
 
 error:
     sceKernelIccSetBuzzer(2);
-    msgok(FATAL, fmt::format("App has Died: ({0:#x})", ret));
+    msgok(MSG_DIALOG::FATAL, fmt::format("App has Died: ({0:#x})", ret));
 
     // destructors
     ORBIS_RenderFillRects_fini();

@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include "log.h"
 #include <ps4sdk.h>
+#include <iostream>     // std::cout
+#include <fstream>      // std::ifstream
 
 #ifndef PAGE_SIZE
 #define PAGE_SIZE 0x4000
@@ -32,6 +34,8 @@ extern "C" {
 	extern int32_t sceMsgDialogProgressBarSetValue(int target, int rate);
 }
 
-void ProgUpdate(int prog, const char* fmt, ...);
+void ProgUpdate(uint32_t prog, std::string fmt);
+std::filesystem::path customRelative(std::filesystem::path from, std::filesystem::path to);
+std::string customFileSize(const std::string& filename);
 
 #endif // COMMON_HPP_

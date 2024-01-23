@@ -15,6 +15,10 @@ typedef enum Dump_Options {
         TOTAL_OF_OPTS = 7
 }  Dump_Options;
 
-bool Dumper(std::string &dump_path, std::string &title_id, Dump_Options opt, std::string &title);
+#define MB(x)   ((size_t) (x) << 20)
+
+bool Dumper(const std::string &dump_path,const std::string &title_id, Dump_Options opt, const std::string &title);
+std::vector<std::tuple<std::string, std::string, std::string>> query_dlc_database(const std::string& title_id);
+bool copy_dir(const std::string& source_dir, const std::string& dest_dir);
 
 #endif  // RAYLIB_TILESON_H_

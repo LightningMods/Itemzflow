@@ -17,11 +17,13 @@ bool is_sfo(const std::string &path) {
   // Check for empty or pure whitespace path
   if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty path argument!");
+    return false;
   }
 
   // Check if file exists and is file
   if (!std::filesystem::is_regular_file(path)) {
     log_error("Input path does not exist or is not a file!");
+    return false;
   }
 
   // Open path
@@ -29,6 +31,7 @@ bool is_sfo(const std::string &path) {
   if (!sfo_input || !sfo_input.good()) {
     sfo_input.close();
     log_error("Cannot open file: %s" ,path.c_str());
+    return false;
   }
 
   // Read SFO header
@@ -52,11 +55,13 @@ std::vector<SfoData> read(const std::string &path) { // Flawfinder: ignore
   // Check for empty or pure whitespace path
   if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty path argument!");
+    return std::vector<SfoData>();
   }
 
   // Check if file exists and is file
   if (!std::filesystem::is_regular_file(path)) {
     log_error("Input path does not exist or is not a file!");
+    return std::vector<SfoData>();
   }
 
   // Open path
@@ -64,12 +69,14 @@ std::vector<SfoData> read(const std::string &path) { // Flawfinder: ignore
   if (!sfo_input || !sfo_input.good()) {
     sfo_input.close();
     log_error("Cannot open file: %s",path.c_str());
+    return std::vector<SfoData>();
   }
 
   // Check to make sure file is a SFO
   if (!is_sfo(path)) {
     sfo_input.close();
     log_error("Input path is not a SFO!");
+    return std::vector<SfoData>();
   }
 
   // Read SFO header
@@ -79,6 +86,7 @@ std::vector<SfoData> read(const std::string &path) { // Flawfinder: ignore
     // Should never reach here... will affect coverage %
     sfo_input.close();
     log_error("Error reading SFO header!");
+    return std::vector<SfoData>();
   }
 
   std::vector<SfoData> data;
@@ -91,26 +99,31 @@ std::vector<SfoData> read(const std::string &path) { // Flawfinder: ignore
     if (!sfo_input.good()) {
       sfo_input.close();
       log_error("Error reading entry key offset!");
+      return std::vector<SfoData>();
     }
     sfo_input.read((char *)&temp_data.format, sizeof(temp_data.format)); // Flawfinder: ignore
     if (!sfo_input.good()) {
       sfo_input.close();
       log_error("Error reading entry format!");
+      return std::vector<SfoData>();
     }
     sfo_input.read((char *)&temp_data.length, sizeof(temp_data.length)); // Flawfinder: ignore
     if (!sfo_input.good()) {
       sfo_input.close();
       log_error("Error reading entry length!");
+      return std::vector<SfoData>();
     }
     sfo_input.read((char *)&temp_data.max_length, sizeof(temp_data.max_length)); // Flawfinder: ignore
     if (!sfo_input.good()) {
       sfo_input.close();
       log_error("Error reading entry max length!");
+      return std::vector<SfoData>();
     }
     sfo_input.read((char *)&temp_data.data_offset, sizeof(temp_data.data_offset)); // Flawfinder: ignore
     if (!sfo_input.good()) {
       sfo_input.close();
       log_error("Error reading entry data offset!");
+      return std::vector<SfoData>();
     }
     data.push_back(temp_data);
   }
@@ -313,6 +326,7 @@ std::vector<SfoData> add_pubtool_data(const SfoPubtoolinfoIndex &data_to_add, co
   new_value.pop_back(); // Remove trailing comma
   if (new_value.size() > 0x200) {
       log_error("New PUBTOOLINFO key is too large (> 0x200)!");
+      return new_data;
   }
 
   SfoData new_entry = build_data("PUBTOOLINFO", "utf-8", new_value.size(), 0x200, new_value);
@@ -377,6 +391,7 @@ void write(const std::vector<SfoData> &data, const std::string &path) {
   // Check for empty or pure whitespace path
   if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty path argument!");
+    return;
   }
 
   std::filesystem::path output_path(path);
@@ -384,6 +399,7 @@ void write(const std::vector<SfoData> &data, const std::string &path) {
   // Exists, but is not a file
   if (std::filesystem::exists(output_path) && !std::filesystem::is_regular_file(output_path)) {
     log_error("Output path exists, but is not a file!");
+    return;
   }
 
   // Open path
@@ -391,6 +407,7 @@ void write(const std::vector<SfoData> &data, const std::string &path) {
   if (!output_file || !output_file.good()) {
     output_file.close();
     log_error("Cannot open output file: %s",path.c_str());
+    return;
   }
 
   // Check for duplicate key_name
@@ -408,14 +425,17 @@ void write(const std::vector<SfoData> &data, const std::string &path) {
     if (entry.format != 0x0004 && entry.format != 0x0204 && entry.format != 0x0404) {
       output_file.close();
       log_error("Unknown SFO format type!");
+      return;
     }
     if (entry.length > entry.max_length) {
       output_file.close();
       log_error("Input `length` of SFO entry must be <= input `max_length`!");
+      return;
     }
     if (entry.data.size() > entry.length) {
       output_file.close();
       log_error("Input SFO data is larger than the `length`");
+      return;
     }
 
     SfoData temp_data = entry;

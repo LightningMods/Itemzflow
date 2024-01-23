@@ -2,6 +2,9 @@
 #include "defines.h"
 #include <sys/stat.h>
 #include <sys/errno.h>
+#if defined(__ORBIS__)
+#include <installpkg.h>
+#endif
 
 bool file_options = false;
 
@@ -12,6 +15,9 @@ extern vec2 resolution,
 
 extern vec3 p_off;
 fs_res fs_ret;
+
+std::vector<std::string> global_pkg_folder_right; 
+std::vector<std::string> global_pkg_folder_left; 
 
 /* normalized rgba colors */
 extern vec4 sele, // default for selection (blue)
@@ -26,35 +32,60 @@ extern texture_font_t *main_font, // small
 /* a double side (L/R) panel filemanager */
 layout_t fm_lp, fm_rp;
 
-bool StartFileBrowser(view_t vt, layout_t *l,
+std::vector<std::string> get_active_pkg_folder(){
+   if(fm_lp.fs_is_active)
+      return global_pkg_folder_left;
+   else
+      return global_pkg_folder_right;
+} 
+
+void push_back_to_active_pkg_folder(const std::string& pkg) {
+   if(fm_lp.fs_is_active)
+      global_pkg_folder_left.push_back(pkg);
+   else
+      global_pkg_folder_right.push_back(pkg);
+}
+
+void clear_all_active_pkg_folder(){
+   global_pkg_folder_left.clear();
+   global_pkg_folder_right.clear();
+}
+
+void clear_active_pkg_folder(){
+   if(fm_lp.fs_is_active)
+      global_pkg_folder_left.clear();
+   else
+      global_pkg_folder_right.clear();
+}
+
+bool StartFileBrowser(view_t vt, layout_t & l,
  int (*callback)(std::string fn, std::string fp), FS_FILTER filter)
 {
 
     if (fs_ret.status == FS_NOT_STARTED)
     {
         fs_ret.last_v = vt;
-        v_curr = FILE_BROWSER;
+        v_curr = FILE_BROWSER_LEFT;
         fs_ret.fs_func = callback;
-        fs_ret.last_layout = l;
+        fs_ret.last_layout = &l;
         fs_ret.filter = filter;
         fs_ret.status = FS_STARTED;
     }
     else{
-        ani_notify(NOTIFI_WARNING, getLangSTR(FS_SEL_ERROR1), getLangSTR(FS_SEL_ERROR2));
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FS_SEL_ERROR1), getLangSTR(LANG_STR::FS_SEL_ERROR2));
         return false;
     }
 
     return true;
 }
 
-vertex_buffer_t *test_v; // pixelshader vbo
+VertexBuffer test_v; // pixelshader vbo
 extern std::string path;
 // build an item_data array from folder list
-void index_items_from_dir_v2(std::string dirpath, std::vector<item_t> &out_vec)
+void index_items_from_dir_v2(std::string dirpath, ThreadSafeVector<item_t> &out_vec)
 {
     // grab, count and sort entry list by name
     log_info("Loading items with Filter: %i", fs_ret.filter);
-
     std::vector<std::string> cvEntries;
 
     if (!getEntries(dirpath, cvEntries, fs_ret.filter, true))
@@ -62,15 +93,31 @@ void index_items_from_dir_v2(std::string dirpath, std::vector<item_t> &out_vec)
     else
         fmt::print("Found {} in: {}", cvEntries.size(), dirpath);
 
+    if(fs_ret.filter == FS_FILTER::FS_PKG){
+       for (const std::string &entry : cvEntries) {
+          if (entry.size() >= 4 && entry.substr(entry.size() - 4) == ".pkg") {
+            push_back_to_active_pkg_folder( dirpath + "/" + entry);
+            log_info("Found PKG: %s %i", entry.c_str(), get_active_pkg_folder().size());
+          }
+        }
+
+        if(get_active_pkg_folder().size() > 1){ 
+            log_info("Install ALL PKGs active");
+            cvEntries.insert(cvEntries.begin(), getLangSTR(LANG_STR::INSTALL_ALL_PKGS));
+           // log_info(cvEntries[0].c_str());
+        }
+    }
+
     out_vec.resize(cvEntries.size() + 1); // +1 for reserved_index
     for (int i = 1; i < cvEntries.size() + 1; i++)
-    { // dynalloc for user tokens
-        out_vec[i].token_c = 1;
-        out_vec[i].id = cvEntries[i - 1];
+    { 
+        out_vec[i].count.token_c = 1;
+        out_vec[i].info.id = cvEntries[i - 1];
+        (get_active_pkg_folder().size() > 1) ? out_vec[1].flags.is_all_pkg_enabled = true : out_vec[1].flags.is_all_pkg_enabled = false;
     }
     // save path and counted items in first reserved_index
-    out_vec[0].id = dirpath;
-    out_vec[0].token_c = cvEntries.size(); // don't count the reserved_index!
+    out_vec[0].info.id = dirpath;
+    out_vec[0].count.token_c = cvEntries.size(); // don't count the reserved_index!
 }
 
 // imported
@@ -103,27 +150,28 @@ static bool update_rela_path(std::string &rela_path, std::string &append)
 }
 
 
+int left_page_pos = 0, right_page_pos = 0;
+bool is_all_pkg_enabled(int panel){
+    return panel == 0 ? global_pkg_folder_right.size() > 1 : global_pkg_folder_left.size() > 1;
+}
+
 void fw_action_to_fm(int button)
 {
     int ret = 0;
     ivec2 posi = (0);
     // we address this pointer to the active panel
-    layout_t *l = NULL;
 
 update_idx:
-
-    // detect the active one (L/R?)
-    fm_lp.fs_is_active ? l = &fm_lp : l = &fm_rp;
+    layout_t & l =  (fm_lp.fs_is_active ? fm_lp : fm_rp);
     // get item index
     // compute some indexes, first one of layout:
     // which icon is selected in field X*Y ?
     // which item is selected over all ?
-    int idx = (l->item_sel.x * l->fieldsize.y + l->item_sel.y) + (l->fieldsize.y * l->fieldsize.x * l->page_sel.x); /// vertically!!!!
-    // update path on selected panel
-    path = l->item_d[0].id;
+    int idx = (l.item_sel.x * l.fieldsize.y + l.item_sel.y) + (l.fieldsize.y * l.fieldsize.x * l.page_sel.x); /// vertically!!!!
+    fm_lp.fs_is_active ? left_page_pos = idx  : right_page_pos = idx;
 
-    if (test_v)
-        vertex_buffer_delete(test_v), test_v = NULL;
+    // update path on selected panel
+    path = l.item_d[0].info.id;
 
     switch (button)
     { // movement
@@ -144,17 +192,17 @@ update_idx:
         //(&path[0]
         char tmp[255], folder_name[255];
 #if defined(__ORBIS__)
-        if(!Keyboard(getLangSTR(CREATE_CUSTOM_DIR).c_str(), NULL, &folder_name[0]))
+        if(!Keyboard(getLangSTR(LANG_STR::CREATE_CUSTOM_DIR).c_str(), NULL, &folder_name[0]))
             return;
 
         snprintf(&tmp[0], 254, "%s/%s", &path[0], &folder_name[0]);
 #endif
         if (mkdir(&tmp[0], 0777) == 0){
             std::string tmp = fmt::format("{0:.20}: {1:.20}",  &path[0], &folder_name[0]);
-            ani_notify(NOTIFI_SUCCESS, getLangSTR(FOLDER_MADE_SUCCESS), tmp);
+            ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::FOLDER_MADE_SUCCESS), tmp);
         }
         else 
-            ani_notify(NOTIFI_WARNING, getLangSTR(FOLDER_MAKE_FAIL), strerror(errno));
+            ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FOLDER_MAKE_FAIL), strerror(errno));
 
         goto update_path;
 
@@ -162,7 +210,7 @@ update_idx:
     }
     case SQU:
     { // select item
-        update_rela_path(path, l->item_d[idx].id);
+        update_rela_path(path, l.item_d[idx].info.id);
 
         if (fs_ret.filter == FS_NONE && !file_options)
         {
@@ -179,7 +227,7 @@ update_idx:
             return;
 
         fs_ret.selected_full_path = path;
-        fs_ret.selected_file = l->item_d[idx].id;
+        fs_ret.selected_file = l.item_d[idx].info.id;
 
         fs_ret.status = FS_DONE;
         return;
@@ -189,8 +237,8 @@ update_idx:
     {
         p_off.x = (!p_off.x) ? 200. : 0.;
         // refresh VBOs
-        GLES2_UpdateVboForLayout(&fm_lp);
-        GLES2_UpdateVboForLayout(&fm_rp);
+        GLES2_UpdateVboForLayout(fm_lp);
+        GLES2_UpdateVboForLayout(fm_rp);
     }
     break;
     case 58:
@@ -199,29 +247,59 @@ update_idx:
     break;
     case CRO:
     {
-        //            sprintf(path, "%s", l->item_d[0].token_d[0].off.c_str());
+        //            sprintf(path, "%s", l.item_d[0].token_d[0].off.c_str());
         if (idx < 1)
             break; // on title
 
+        if(fs_ret.filter ==  FS_FILTER::FS_PKG && 
+        idx == 1 && get_active_pkg_folder().size() > 1){
+
+            log_info("[FS_DEBUG] Installing %i PKGs", get_active_pkg_folder().size() );
+            int i = 1;
+            for (const std::string &entry : get_active_pkg_folder()) {
+                log_info("[FS_DEBUG] Install PKG: %s", entry.c_str());
+                #if defined(__ORBIS__)
+                std::size_t pos = entry.find_last_of("/\\");  // Find last occurrence of directory separator character
+                std::string filename = (pos == std::string::npos) ? entry : entry.substr(pos + 1);  // Extract substring after directory separator character
+                pkginstall(entry.c_str(), filename.c_str(), true, false, get_active_pkg_folder().size(), i);
+                sleep(1);
+                i++;
+                #endif
+            }
+
+            break;
+        }
+
         // update filepath, append item_data filename
-        update_rela_path(path, l->item_d[idx].id);
-        //          sprintf(path, "%s/%s", l->item_d[  0  ].token_d[0].off.c_str(),
-        //                                 l->item_d[ idx ].token_d[0].off.c_str());
+        update_rela_path(path, l.item_d[idx].info.id);
+        //          sprintf(path, "%s/%s", l.item_d[  0  ].token_d[0].off.c_str(),
+        //                                 l.item_d[ idx ].token_d[0].off.c_str());
         if (check_stat(path.c_str()) == S_IFREG && fs_ret.filter != FS_FOLDER)
         {
-            fw_action_to_fm(SQU);
+            if(fs_ret.filter != FS_FILTER::FS_PKG)
+              fw_action_to_fm(SQU);
+            else{
+#ifdef __ORBIS__
+                if ((ret = pkginstall(path.c_str(), l.item_d[idx].info.id.c_str(), true, false)) != ITEMZCORE_SUCCESS){
+                    if (ret == IS_DISC_GAME)
+                         ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OPTION_DOESNT_SUPPORT_DISC), fmt::format("{0:#x}",  ret));
+                }
+#endif
+            }
+
         }
         else /* if a folder go to path */
             if (check_stat(path.c_str()) == S_IFDIR)
             {
             update_path:
                 // recreate current item_data array
-                l->item_d.clear();
+                clear_active_pkg_folder();
+                l.item_d.clear();
                 // use updated path
-                index_items_from_dir_v2(path, l->item_d);
+                index_items_from_dir_v2(path, l.item_d);
                 // item count is know now, copy it
-                l->item_c = l->item_d[0].token_c;
-                l->vbo_s = ASK_REFRESH;
+                l.item_c = l.item_d[0].count.token_c;
+                l.vbo_s = ASK_REFRESH;
                 // flag to refresh VBO, reset to first item
                 ret = 1, idx = 0;
                 goto update_pos;
@@ -230,7 +308,7 @@ update_idx:
     break;
     case CIR:
     {
-        //            sprintf(path, "%s", l->item_d[0].token_d[0].off.c_str());
+        //            sprintf(path, "%s", l.item_d[0].token_d[0].off.c_str());
         // update filepath, step folder back
         std::string tmp = "";
         bool x1 = update_rela_path(path, tmp);
@@ -249,10 +327,11 @@ update_idx:
     {
         fm_lp.item_d.clear();
         fm_rp.item_d.clear();
+        clear_all_active_pkg_folder();
         fs_ret.status = FS_CANCELLED;
 
         if(fs_ret.filter != FS_NONE)
-            ani_notify(NOTIFI_WARNING, getLangSTR(OP_CANNED), getLangSTR(OP_CANNED_1));
+            ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OP_CANNED), getLangSTR(LANG_STR::OP_CANNED_1));
     }
         return;
     }
@@ -272,31 +351,33 @@ update_idx:
         idx += posi.y;
 
     update_pos:
-        l->vbo_s = ASK_REFRESH;
+        l.vbo_s = ASK_REFRESH;
         // check for bounds, flag to refresh VBO!
-        if (idx > l->item_c)
+        if (idx > l.item_c){
             idx = 0, ret = 1;
+        }
         else if (idx < 0)
-            idx = l->item_c, ret = 1;
+            idx = l.item_c, ret = 1;
 
-        ivec2 x = (ivec2){idx % l->fieldsize.x, idx / l->fieldsize.x};
-        //log_info("x (%d, %d), %d %d\n", x.x, x.y,x.y % l->fieldsize.y, x.y / l->fieldsize.y);
+        ivec2 x = (ivec2){idx % l.fieldsize.x, idx / l.fieldsize.x};
+        //log_info("x (%d, %d), %d %d\n", x.x, x.y,x.y % l.fieldsize.y, x.y / l.fieldsize.y);
 
         ivec3 X = (ivec3){x.x,
-                          x.y % l->fieldsize.y,
-                          x.y / l->fieldsize.y};
+                          x.y % l.fieldsize.y,
+                          x.y / l.fieldsize.y};
         //    printf("(x:%d, y:%d, z:%d)\n", X.x, X.y, X.z);
 
         // update selector pos
-        l->item_sel = X.xy;
+        l.item_sel = X.xy;
         // on page change flag to refresh VBO!
-        if (l->page_sel.x != X.z)
+        if (l.page_sel.x != X.z)
             ret = 1;
         // update current page
-        l->page_sel.x = X.z;
+        l.page_sel.x = X.z;
+        fm_lp.fs_is_active ? left_page_pos = idx  : right_page_pos = idx;
 
         // all done
-        //log_info("item_d[%d]: y:%d p:%d", idx, l->item_sel.y, l->page_sel.x);
+       // log_info("item_d[%d]: y:%d p:%d", idx, l.item_sel.y, l.page_sel.x);
     }
 
     // trigger VBO refresh
@@ -305,8 +386,8 @@ update_idx:
 
     // feedback
 #if 0
-    if (l->item_c > 0)
-        log_info("Selected: %s", l->item_d[idx].id.c_str());
+    if (l.item_c > 0)
+        log_info("Selected: %s", l.item_d[idx].info.id.c_str());
     else
         log_info("no items");
 #endif

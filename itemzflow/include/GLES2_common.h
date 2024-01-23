@@ -12,7 +12,9 @@
 #endif
 #include <vector>
 #include <string>
-
+#include <memory>
+#include <mutex>
+#include <atomic>
 
 typedef enum vbo_status
 {
@@ -31,42 +33,165 @@ struct multi_t
     bool is_active = false;
 };
 
-struct item_t
-{
-    std::string id, name, image, package,
-    version, picpath, sfopath; //App Data
 
-    int token_c, HDD_count = 0; // count
-    GLuint texture;  // the item icon
-    // if the item icon is cached in atlas, use UV
-    vec4  uv;  // normalized p1, p2
-    multi_t  multi_sel;
+struct AppIcon {
+  struct ImageData {
+    unsigned char* data = nullptr;
+    int w = 0, h = 0, comp= 0;
+    //mutable std::mutex data_mutex; // Mutable to allow locking in const functions
+    ImageData(){
 
-    std::unordered_map<std::string, std::string> extra_sfo_data;
-    bool is_ext_hdd = false, is_fpkg = true, is_vapp = false;
-    bool is_dumpable = false, app_vis = true, is_ph = false;
-    // need to add index for texture atlas
+    }
+
+    ImageData(const ImageData& other) {
+        //std::lock_guard<std::mutex> lock(other.data_mutex);
+        w = other.w;
+        h = other.h;
+        comp = other.comp;
+        // Perform deep copy of data if needed
+        if (other.data) {
+            data = other.data;
+        }
+    }
+
+   ImageData& operator=(const ImageData& other) {
+        if (this != &other) {
+          //  std::unique_lock<std::mutex> lock1(data_mutex, std::defer_lock);
+            //std::unique_lock<std::mutex> lock2(other.data_mutex, std::defer_lock);
+            //std::lock(lock1, lock2);
+
+            w = other.w;
+            h = other.h;
+            comp = other.comp;
+
+            if (other.data) {
+                data = other.data;
+            } else {
+                data = nullptr;
+            }
+        }
+        return *this;
+    }
+
+    ~ImageData() {
+       // delete[] data;
+    }
 };
+    std::atomic<GLuint> texture; // The item icon
+    vec4 uv; // Normalized p1, p2
+    std::atomic<bool> cover_exists, turn_into_texture;
+    ImageData image_data;
+
+
+    AppIcon() : texture(0), cover_exists(false), turn_into_texture(false)
+    {
+        uv = {0, 0, 0, 0};
+        image_data = ImageData(); // Default construct image_data
+    }
+
+    // Custom copy constructor
+    AppIcon(const AppIcon& other) : texture(other.texture.load()),
+                                   uv(other.uv),
+                                   cover_exists(other.cover_exists.load()),
+                                   turn_into_texture(other.turn_into_texture.load())
+                                   {
+       // std::lock_guard<std::mutex> lock(other.image_data.data_mutex);
+        image_data = other.image_data;
+                                   }
+
+    // Custom copy assignment operator
+    AppIcon& operator=(const AppIcon& other) {
+        if (this == &other) {
+            return *this;
+        }
+
+        texture = other.texture.load();
+        uv = other.uv;
+        cover_exists = other.cover_exists.load();
+        turn_into_texture = other.turn_into_texture.load();
+
+       // std::lock(image_data.data_mutex, other.image_data.data_mutex);
+        //std::lock_guard<std::mutex> lock1(image_data.data_mutex, std::adopt_lock);
+        //std::lock_guard<std::mutex> lock2(other.image_data.data_mutex, std::adopt_lock);
+
+        image_data = other.image_data;
+
+        return *this;
+    }
+};
+
+struct ItemFlags {
+    bool is_ext_hdd = false;
+    bool is_fpkg = true;
+    bool is_vapp = false;
+    bool is_dumpable = false;
+    bool app_vis = true;
+    bool is_ph = false;
+    bool is_favorite = false;
+    bool is_all_pkg_enabled = false;
+};
+
+struct ItemData {
+    std::string id;
+    std::string name;
+    std::string image;
+    std::string package;
+    std::string version;
+    std::string picpath;
+    std::string sfopath;
+};
+
+struct ItemCount {
+    int token_c = 0;
+    int HDD_count = 0;
+};
+
+struct ItemExtraData {
+    std::unordered_map<std::string, std::string> extra_sfo_data;
+};
+
+struct item_t {
+    ItemData info;
+    ItemCount count;
+    AppIcon icon;
+    multi_t multi_sel;
+    ItemExtraData extra_data;
+    ItemFlags flags;
+};
+
+#include "feature_classes.hpp"
 
 struct layout_t
 {
-    vec4   bound_box; // total field size, in px
-    ivec2  fieldsize, // total field size, in items number
-           item_sel,  // current selected item into field
-           page_sel;  // page_selection: current, max page
-    int    retries;   // check for what's used for and remove
-    // an array of items
-    std::vector<item_t> item_d;    // item_data array
-    int     item_c,    // item_count
-            curr_item, // current selected item:
-            f_size,    // field size
-            f_sele;    // selected in field
-    vec4*   f_rect = NULL;    // field rectangle array
+    vec4        bound_box;
+    ivec2       fieldsize,
+                item_sel,
+                page_sel;
+    int         retries;
+   ThreadSafeVector<item_t> item_d;
+   //item_t* item_d = NULL;
+    int         item_c,
+                curr_item,
+                f_size,
+                f_sele;
+    std::vector<vec4> f_rect;
+
+    //vec4 f_rect;    // field rectangle array
     // each layout will hold its ft-gl vertex buffer object
-    vertex_buffer_t* vbo = NULL;
-    enum vbo_status  vbo_s; // vbo_status
-    // layout status
-    bool is_shown = false, is_active = false, fs_is_active = false; // to control selected_item (deprecated by active_p)
+    //vertex_buffer_t* vbo = NULL;
+    VertexBuffer vbo;
+    vbo_status   vbo_s;
+    bool is_shown, is_active, fs_is_active;
+    std::recursive_mutex mtx;
+
+    layout_t() : retries(0), item_c(0), curr_item(0), f_size(0), f_sele(0),
+             vbo_s(EMPTY), is_shown(false), is_active(false), fs_is_active(false)
+    {
+        bound_box = {0, 0, 0, 0};
+        fieldsize = {0, 0};
+        item_sel = {0, 0};
+        page_sel = {0, 0};
+    }
 };
 
 
@@ -76,25 +201,20 @@ struct _ent {
     int lvl;
 };
 
+typedef enum {
+    ITEMZCORE_GENERAL_ERROR = 0xDEADBEEF,
+    ITEMZCORE_PRX_RESOLVE_ERROR = 0xCCCCCCC,
+    ITEMZCORE_EINVAL = 0xEEEEEEE,
+    ITEMZCORE_QUEUE_FULL = 0xAAAAAAA,
+    ITEMZCORE_NULL_BUFFER = 0x123123,
+    ITEMZCORE_SUCCESS = 0
+} ITEMZCORE_ERRORS;
 
+typedef struct
+{
+    char* name;
+} entry_t;
 
-
-// freetype-gl pass last composed Text_Length in pixel, we use to align text!
-
-/*
-    GLES2 layout rework, v2
-*/
-
-/*
-    todo: we need to differentiate and made use of vbo_status
-    to avoid useless pushes to gpu
-*/
-
-/*
-    auxiliary array of item_index_t:
-    - shared for Search/Groups
-    - the query to save search results;
-*/
 enum SH_type
 {
     USE_COLOR,
@@ -120,46 +240,23 @@ typedef enum token_name
     // should match NUM_OF_USER_TOKENS
 } token_name;
 
-typedef enum {
-    ITEMZCORE_GENERAL_ERROR = 0xDEADBEEF,
-    ITEMZCORE_PRX_RESOLVE_ERROR = 0xCCCCCCC,
-    ITEMZCORE_EINVAL = 0xEEEEEEE,
-    ITEMZCORE_QUEUE_FULL = 0xAAAAAAA,
-    ITEMZCORE_NULL_BUFFER = 0x123123,
-    ITEMZCORE_SUCCESS = 0
-} ITEMZCORE_ERRORS;
-
-typedef struct
-{
-    char* name;
-} entry_t;
-
-typedef enum pt_status
-{
-    CANCELED = -1,
-    READY,
-    PAUSED,
-    RUNNING,
-    COMPLETED
-} pt_status;
-
-typedef enum badge_t
-{
-    AVAILABLE = 1,
-    SOON,
-    SELECTED,
-    NUM_OF_BADGES
-} badge_t;
-
 typedef enum
 {
     NO_CATEGORY_FILTER,
+    FILTER_FAVORITES,
     FILTER_RETAIL_GAMES,
     FILTER_FPKG,
     FILTER_GAMES,
-    FILTER_HOMEBREW = 4,
-    NUMB_OF_CATEGORIES = 4
+    FILTER_HOMEBREW,
+    NUMB_OF_CATEGORIES
 } Sort_Category;
+
+struct IconPosition {
+    int offset;
+    float x;
+    float y;
+};
+
 
 #define ORBIS_LIBC_MALLOC_MANAGED_SIZE_VERSION (0x0001U)
 
@@ -185,6 +282,8 @@ typedef struct LibcMallocManagedSize {
     size_t currentInuseSize;
 } LibcMallocManagedSize;
 
+
+namespace multi_select_options {
 typedef enum {
     NA_SORT = 0,
     TID_ALPHA_SORT,
@@ -236,6 +335,7 @@ typedef enum {
 
 typedef enum {
     SEL_DUMP_ALL = 0,
+    SEL_DUMP_VALID,
     SEL_BASE_GAME,
     SEL_GAME_PATCH,
     SEL_REMASTER,
@@ -244,22 +344,24 @@ typedef enum {
     SEL_RESET = 999,
     SEL_RUNNING_NOW = 696969
 } Dump_Multi_Sels;
-
+};
 
 #define FIRST_MULTI_LINE 1
 #define RESET_MULTI_SEL 0
 
-
+namespace NOTIFI{
 typedef enum {
-    NOTIFI_INFO,
-    NOTIFI_WARNING,
-    NOTIFI_SUCCESS,
-    NOTIFI_ERROR,
-    NOTIFI_GAME,
-    NOTIFI_KOFI,
-    NOTIFI_PROFILE,
+    INFO,
+    WARNING,
+    SUCCESS,
+    ERROR,
+    GAME,
+    KOFI,
+    PROFILE,
     NUM_OF_NOTIS
 } NOTI_LEVELS;
+};
+//NOTIFI::NOTI_LEVELS 
 
 #define FIRST_MULTI_LINE 1
 #define RESET_MULTI_SEL 0
@@ -299,7 +401,8 @@ typedef enum view_t
     ITEMzFLOW = 0,
     ITEM_PAGE = 1,
     ITEM_SETTINGS = 2,
-    FILE_BROWSER = 3
+    FILE_BROWSER_LEFT = 3,
+    FILE_BROWSER_RIGHT = 4,
 } view_t;
 void GLES2_render_list(enum view_t v);
 
@@ -315,9 +418,6 @@ enum views
   
 };
 
-typedef struct { float s, t; } st;
-typedef struct { float x, y, z; } xyz;
-typedef struct { float r, g, b, a; } rgba;
 
 typedef struct retry_t
 {
@@ -325,27 +425,31 @@ typedef struct retry_t
     bool exists;
 } retry_t;
 
+
+namespace cf_ops {
 typedef enum
 {
-    Launch_Game_opt, 
-    Dump_Game_opt, 
-    Uninstall_opt,
-    Game_Save_opt, 
-    Trainers_opt,
-    Hide_App_opt,
-    Change_icon_opt,
-    Change_name_opt,
-    Move_apps_opt,
-    Restore_apps_opt,
+    LAUNCH_GAME,
+    DUMP_GAME,
+    UNINSTALL,
+    GAME_SAVE,
+    TRAINERS,
+    HIDE_APP,
+    CHANGE_ICON,
+    CHANGE_NAME,
+    MOVE_APPS,
+    RESTORE_APPS,
    
-} Ops_for_cf;
+} REG_OPTS;
 
 typedef enum
 {
-    LAUNCH_HA, 
-    REFRESH_HA, 
-   
-} Ops_for_hostapp;
+    LAUNCH_HA,
+    REFRESH_HA,  
+} HOSTAPP_OPTS;
+
+
+};
 
 // menu entry strings
 #define  LPANEL_Y  (5)
@@ -403,7 +507,7 @@ void on_GLES2_Render_box(vec4* frect);
 void on_GLES2_Final(void);
 
 // from pixelshader.c
-void pixelshader_render(GLuint SL_program, vertex_buffer_t* vbo, vec2* resolution);
+void pixelshader_render();
 void pixelshader_init(int width, int height);
 void pixelshader_fini(void);
 
@@ -415,20 +519,20 @@ void GLES2_init_submenu(void);
 void ftgl_render_vbo(vertex_buffer_t* vbo, vec3* offset);
 
 void escalate_priv(void);
-int Start_IF_internal_Services(int reboot_num);
+int Start_IF_internal_Services(const char* launch_q);
 int pingtest(int libnetMemId, int libhttpCtxId, const char* src);
 
 int df(std::string mountPoint, std::string &out);
 
-int get_item_index(layout_t* l);
+int get_item_index(layout_t& l);
 // from GLES2_scene_v2.c
-void GLES2_layout_init(int req_item_count, layout_t *l);
+void GLES2_layout_init(int req_item_count, layout_t &l);
 
-vertex_buffer_t* vbo_from_rect(vec4* rect);
+VertexBuffer vbo_from_rect(vec4& rect);
 
-void GLES2_UpdateVboForLayout(layout_t* l);
+void GLES2_UpdateVboForLayout(layout_t& l);
 
-int layout_fill_item_from_list(layout_t *l, std::vector<std::string> &i_list);
+int layout_fill_item_from_list(layout_t &l, std::vector<std::string> &i_list);
 
 void fw_action_to_cf(int button);
 
@@ -438,7 +542,7 @@ void GLES2_render_menu(int unused);
 void init_ItemzCore(int w, int h);
 void Render_ItemzCore(void);
 void fw_action_to_cf(int button);
-//void X_action_dispatch(int action, layout_t *l);
+//void X_action_dispatch(int action, layout_t &l);
 
 /// pthreads used in GLES2_q.c
 
@@ -458,15 +562,15 @@ void GLES2_refresh_sysinfo(void);
 
 // disk free percentages
 extern double dfp_hdd, dfp_ext, dfp_now;
-extern layout_t *active_p, ls_p, setting_p;
+extern layout_t ls_p, setting_p;
 
 // GLES2_layout
-void layout_update_fsize(layout_t* l);
-void layout_update_sele(layout_t* l, int movement);
+void layout_update_fsize(layout_t& l);
+void layout_update_sele(layout_t& l, int movement);
 void GLES2_Refresh_for_settings();
-void layout_set_active(layout_t* l);
+void layout_set_active(layout_t& l);
 void swap_panels(void);
-void GLES2_render_layout_v2(layout_t* l, int unused);
+void  GLES2_render_layout_v2(view_t vw);
 
 
 // scene_v2.c
@@ -492,10 +596,8 @@ typedef struct {
     const void* data;
 } RawImageData;
 
-#if __cplusplus
-extern "C" {
-#endif
 extern float tl;
+bool is_all_pkg_enabled(int panel);
 
 /* GLES2_panel.h */
 extern texture_font_t *main_font, // small
@@ -510,23 +612,23 @@ GLuint load_texture(const GLsizei width, const GLsizei height,
 // higher level helper
 GLuint load_png_asset_into_texture(const char* relative_path);
 GLuint load_png_data_into_texture(const char* data, int size);
-bool is_png_vaild(const char *relative_path, int *out_width, int *out_height);
+bool is_png_vaild(const char *relative_path, int *width, int *height);
 extern vec2 tex_size; // last loaded png size as (w, h)
-int writeImage(char* filename, int width, int height, int* buffer, char* title);
+int writeImage(char* filename, int width, int height, int *buffer, const char* title);
 /// from timing.c
-unsigned int get_time_ms(void);
+float get_time_ms(std::chrono::time_point<std::chrono::system_clock> &last_time);
 bool if_exists(const char* path);
-#if __cplusplus
-}
-#endif
 
-void add_text(vertex_buffer_t* buffer, texture_font_t* font, std::string text, vec4* color, vec2* pen);
+extern int left_page_pos;
+extern int right_page_pos;
+
 void GLES2_ani_update(double time);
 void GLES2_ani_fini(void);
 void GLES2_ani_draw(void); 
-void on_GLES2_Render_icon(enum SH_type SL_program, GLuint texture, int num, vec4 *frect, vec4 *uv);
+
+void on_GLES2_Render_icon(enum SH_type SL_program, GLuint texture, int num, vec4 &frect, vec4 *uv);
 void GLES2_ani_init(int width, int height);
-int ani_notify(NOTI_LEVELS lvl, std::string message, std::string detail);
+int ani_notify(NOTIFI::NOTI_LEVELS lvl, std::string message, std::string detail);
 int index_token_from_sfo(std::string *title, std::string *apptype, std::string *version, std::string path, int lang);;
     /// from ls_dir()
 int check_stat(const char *filepath);
@@ -547,21 +649,25 @@ void es2fini_lines_and_rect(void);
 /// GLES2_rects.c
 void ORBIS_RenderFillRects_init(int width, int height);
 void ORBIS_RenderFillRects_rndr(void);
+void ORBIS_RenderDrawStar(const vec2 *coords, int size);
 void ORBIS_RenderFillRects_fini(void);
 void ORBIS_RenderDrawLines(const vec2* points, int count);
-void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 *rgba, const vec4 *rects, int count);
-void ORBIS_RenderDrawBox(enum SH_type SL_program, const vec4 *rgba, const vec4 *rect);
-void GLES2_DrawFillingRect(vec4* frect, vec4* color, double* percentage);
+void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 &rgba, std::vector<vec4> &rects, int count);
+void GLES2_DrawFillingRect(std::vector<vec4> &r, vec4 &c,  const double percentage);
+    void ORBIS_RenderDrawBox(enum SH_type SL_program, const vec4 &rgba, vec4 &r);
 
 void check_tex_for_reload(int idx);
 void check_n_load_textures(int idx);
 void InitScene_4(int width, int height);
 void InitScene_5(int width, int height);
 void O_action_dispatch(void);
+
 void realloc_app_retries();
-void index_items_from_dir(std::vector<item_t> &out_vec, std::string dirpath, std::string dirpath2, Sort_Category category);
+void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath, std::string dirpath2, Sort_Category category);
 void get_stat_from_file(std::string &out_str, std::string &filepath_str);
 std::string category_get_str(Sort_Category num);
-std::string power_menu_get_str(Power_control_sel num);
-std::string uninstall_get_str(Uninstall_Multi_Sel num);
-void itemzcore_add_text(vertex_buffer_t* vert_buffer,float x, float y, std::string text);
+std::string power_menu_get_str(multi_select_options::Power_control_sel num);
+std::string uninstall_get_str(multi_select_options::Uninstall_Multi_Sel num);
+void itemzcore_add_text(VertexBuffer &vert_buffer,float x, float y, std::string text);
+void DrawWhiteStar();
+void flip_frame(void);

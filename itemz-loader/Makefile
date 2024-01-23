@@ -7,7 +7,7 @@ TargetFile=homebrew.elf
 
 include $(ORBISDEV)/make/ps4sdk.mk
 
-LinkerFlags += -lSceLncUtil_stub -lc++ -lc++abi -lc++experimental -luser_mem_sys -lkernel_stub -lSceLibcInternal_stub -lSceSysmodule_stub -lSceSystemService_stub -lSceNet_stub -lSceUserService_stub -lScePigletv2VSH_stub -lSceVideoOut_stub  -lSceImeDialog_stub -lSceGnmDriver_stub  -lorbis -lorbisGl -lScePad_stub -lSceCommonDialog_stub -lSceMsgDialog_stub  -lSceIme_stub -lSceSysUtil_stub -lSceHttp_stub -lSceSsl_stub -lSceNetCtl_stub  -lkernel_sys_stub 
+LinkerFlags += -lSceLncUtil_stub -lc++ -lc++abi -lc++experimental -luser_mem_sys  -lkernel_sys_stub -lSceLibcInternal_stub -lSceSysmodule_stub -lSceSystemService_stub -lSceNet_stub -lSceUserService_stub -lScePigletv2VSH_stub -lSceVideoOut_stub  -lSceImeDialog_stub -lSceGnmDriver_stub  -lorbis -lorbisGl -lScePad_stub -lSceCommonDialog_stub -lSceMsgDialog_stub  -lSceIme_stub -lSceSysUtil_stub -lSceHttp_stub -lSceSsl_stub -lSceNetCtl_stub  -lkernel_sys_stub 
 
 CompilerFlags += -D__PS4__ -D__ORBIS__
 

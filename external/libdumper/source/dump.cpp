@@ -18,34 +18,198 @@
 #include <iostream>
 #include <vector>
 #include "log.h"
-extern "C" {
+#include <regex>
+#include <string>
 #include "lang.h"
-}
+#include "fself.hpp"
 
 namespace dump {
+
+bool DecryptAndMakeGP4(const std::string &output_path, const std::string &title_id, Dump_Options opt, const std::string& title, const std::string& DLC_Content_id = ""){
+
+  log_info("DecryptAndMakeGP4(%s, %s, %i, %s, %s)", output_path.c_str(), title_id.c_str(), opt, title.c_str(), DLC_Content_id.c_str());
+  std::filesystem::path sce_sys_path(output_path);
+  sce_sys_path /= "sce_sys";
+  // Generate GP4
+  std::filesystem::path sfo_path(sce_sys_path);
+  sfo_path /= "param.sfo";
+
+  std::filesystem::path gp4_path(output_path);
+  gp4_path /= (opt == ADDITIONAL_CONTENT_DATA) ? DLC_Content_id + ".gp4" : title_id + ".gp4";
+
+  std::filesystem::path sb_path("/mnt/sandbox/pfsmnt/");
+   if (opt == BASE_GAME ||  opt == REMASTER) {
+         sb_path += title_id + "-app0/";
+      }
+      else if (opt == GAME_PATCH) {
+         sb_path += title_id + "-patch0/";
+      }
+      else if (opt == THEME_UNLOCK || opt == ADDITIONAL_CONTENT_DATA || opt == THEME || opt == ADDITIONAL_CONTENT_NO_DATA) {
+         sb_path += title_id + "-ac/";
+     }
+     else {
+         log_error("Invalid OPT");
+         return false;
+     }
+
+
+   ProgUpdate(98,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(DEC_BIN) + " " + sb_path.string());  
+   log_debug("Decrypting Bins in %s ...", sb_path.string().c_str());
+   
+    bool fself = false;
+    if(fself::is_fself(sb_path.string() + "/eboot.bin")){
+        fself = true;
+        log_info("eboot is an FSELF");
+    }
+
+    elf::decrypt_dir(sb_path.string(), output_path, fself);
+
+  
+ProgUpdate(99,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(CREATING_GP4));  
+try {
+    std::vector<std::string> self_files;
+    if (!gp4::generate(sfo_path.string(), output_path, gp4_path.string(), self_files, opt))
+        return false;
+}
+catch (const std::exception& e)
+{
+    log_error("Gerneating GP4 failed");
+    return false;
+}
+
+return true;
+}
+    
+bool dump_dlc(const std::string & usb_device, const std::string & title_id) {
+
+  // Vector of strings for locations of SELF files for decryption
+  std::vector<std::string> self_files;
+  bool ac_wo_data = false;
+  std::string full_content_id;
+
+  std::vector <std::tuple<std::string, std::string, std::string>> dlc_info = query_dlc_database(title_id);
+  std::string addcont_path_str;
+  std::string user_addcont_dir = "/user/addcont/" + title_id;
+  std::string ext_addcont_dir = "/mnt/ext0/user/addcont/" + title_id;
+  std::string disc_addcont_dir = "/mnt/disc/addcont/" + title_id;
+
+  if(std::filesystem::exists(user_addcont_dir)){
+        addcont_path_str = user_addcont_dir;
+  }
+  else if(std::filesystem::exists(ext_addcont_dir)){
+        addcont_path_str = ext_addcont_dir;
+  }
+  else {
+        addcont_path_str = disc_addcont_dir;
+  }
+
+  for (const auto & result: dlc_info) {
+    std::filesystem::path pkg_path(addcont_path_str + "/" + std::get<0>(result));
+    std::string title = std::get<1>(result);
+    pkg_path /= "ac.pkg";   
+    
+    if (!std::filesystem::exists(pkg_path) || !std::filesystem::is_regular_file(pkg_path)) {
+      log_error("Unable to find `pkg_path`");
+      return false;
+    }
+
+    ac_wo_data = std::filesystem::file_size(pkg_path) < MB(5);
+     
+    std::string out_path = usb_device + "/" + title_id + "-DLC-" + std::get<0>(result);
+    log_info("output directory %s", out_path.c_str());
+    if (!std::filesystem::is_directory(out_path) && !std::filesystem::create_directories(out_path)) {
+      log_error("Unable to create `out_path` directory");
+      return false;
+    }
+  
+      if(!ac_wo_data){
+         // Construct path to pfs_image.dat file
+         std::filesystem::path pfs_path("/mnt/sandbox/pfsmnt/");
+         std::filesystem::path sb_path("/mnt/sandbox/pfsmnt/");
+         full_content_id = std::get<2>(result);
+         pfs_path /= full_content_id + "-ac-nest"; // Use stem to get filename without extension
+         sb_path /= full_content_id + "-ac"; // Use stem to get filename without extension
+         pfs_path /= "pfs_image.dat";
+
+         if (std::filesystem::exists(pfs_path) && std::filesystem::is_regular_file(pfs_path)) {
+            log_info("Found pfs at %s", pfs_path.string().c_str());
+            if (!pfs::extract(pfs_path.string(), out_path, title_id, title)) {
+                log_error("Failed to extract pfs");
+                return false;
+            }
+          }
+      }
+
+      // Found pkg path
+      log_info("Found pkg at %s", pkg_path.string().c_str());
+      ProgUpdate(8, getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(DLC_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(DUMPER_SC0));
+      std::filesystem::path sce_sys_path(out_path);
+      sce_sys_path /= "sce_sys";
+      if (!std::filesystem::is_directory(sce_sys_path.string()) && !std::filesystem::create_directories(sce_sys_path.string())) {
+        log_error("Unable to create `sce_sys` directory");
+        return false;
+      }
+      if (!pkg::extract_sc0(pkg_path, sce_sys_path.string(), title_id, title)) {
+        log_error("pkg::extract_sc0(\"%s\",\"%s\") failed", pkg_path.c_str(), sce_sys_path.string().c_str());
+        return false;
+      }
+      
+      std::filesystem::path gp4_path(out_path);
+      gp4_path /= full_content_id + "-DLC.gp4";
+      // Generate GP4
+      std::filesystem::path sfo_path(sce_sys_path);
+      sfo_path /= "param.sfo";
+
+     
+     if(!DecryptAndMakeGP4(out_path, title_id, ADDITIONAL_CONTENT_DATA, title, full_content_id)){
+       log_error("Decrypting and making GP4 failed");
+       return false;
+     }
+  }
+
+  return true;
+}
+
 bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Options opt, const std::string& title) {
 
-    
-  if (!LoadDumperLangs(DumperGetLang())) {
-        if (!LoadDumperLangs(0x01)) {
-            if(!load_dumper_embdded_eng())
-                return false;
-        }
-        else
-            log_debug("Loaded the backup, lang %i failed to load", DumperGetLang());
-  }
   if (opt > TOTAL_OF_OPTS)
   {
       log_error("OPT is out of range: %i", opt);
       return false;
   }
-  
+
 
   std::string output_directory = title_id;
+
+   // Check for .dumping semaphore
+  std::filesystem::path dumping_semaphore(usb_device);
+  std::filesystem::path complete_semaphore(usb_device);
+  std::ofstream dumping_sem_touch(dumping_semaphore);
+  
   if (opt == GAME_PATCH) {
     output_directory += "-patch"; // Add "-patch" to "patch" types so it doesn't overlap with "base"
-  } else if (opt == THEME_UNLOCK) {
+  } 
+  else if (opt == THEME_UNLOCK) {
     output_directory += "-unlock"; // Add "-unlock" to theme type so we can differentiate between "install" and "unlock" PKGs
+  }
+
+  
+  dumping_semaphore /= output_directory + ".dumping";
+  if (std::filesystem::exists(dumping_semaphore)) {
+    log_error("This dump is currently dumping or closed unexpectedly! Please delete existing dump to enable dumping.");
+  }
+
+  // Check for .complete semaphore
+  complete_semaphore /= output_directory + ".complete";
+  if (std::filesystem::exists(complete_semaphore)) {
+    log_error("This dump has already been completed! Please delete existing dump to enable dumping.");
+  }
+
+
+  // Create .dumping semaphore
+  dumping_sem_touch.close();
+  if (std::filesystem::exists(dumping_semaphore)) {
+    log_error("Unable to create dumping semaphore!");
   }
 
   // Create base path
@@ -57,29 +221,6 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
     log_error("Unable to create output directory");
     return false;
   }
-
-  // Check for .dumping semaphore
-  std::filesystem::path dumping_semaphore(usb_device);
-  dumping_semaphore /= output_directory + ".dumping";
-  if (std::filesystem::exists(dumping_semaphore)) {
-    log_error("This dump is currently dumping or closed unexpectedly! Please delete existing dump to enable dumping.");
-  }
-
-  // Check for .complete semaphore
-  std::filesystem::path complete_semaphore(usb_device);
-  complete_semaphore /= output_directory + ".complete";
-  if (std::filesystem::exists(complete_semaphore)) {
-    log_error("This dump has already been completed! Please delete existing dump to enable dumping.");
-  }
-
-
-  // Create .dumping semaphore
-  std::ofstream dumping_sem_touch(dumping_semaphore);
-  dumping_sem_touch.close();
-  if (std::filesystem::exists(dumping_semaphore)) {
-    log_error("Unable to create dumping semaphore!");
-  }
-
 
   // Create "sce_sys" directory in the output directory
   std::filesystem::path sce_sys_path(output_path);
@@ -142,10 +283,7 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
               pkg_directory_path /= title_id;
               pkg_directory_path /= "ac.pkg";
           }
-          else if (opt == ADDITIONAL_CONTENT_DATA) {
-              pkg_directory_path /= "addcont";
-              // This regex will match because of the checks at the beginning of the function
-          }
+
           // Detect if on extended storage and make pkg_path
           std::filesystem::path ext_path("/mnt/ext0");
           ext_path += pkg_directory_path;
@@ -163,9 +301,10 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
   catch (std::filesystem::filesystem_error& e)
   {
       log_error("SFO Opts failed");
+      return false;
   }
 
-ProgUpdate(8, "%s\n\n%s %s\n%s %s\n\n %s ...", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME),title.c_str(), getDumperLangSTR(TITLE_ID), title_id.c_str(), getDumperLangSTR(DUMPER_SC0));
+ProgUpdate(8,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(DUMPER_SC0));  
 try {
     if (std::filesystem::exists(pkg_path)) {
         if (!pkg::extract_sc0(pkg_path, sce_sys_path, title_id, title))
@@ -185,7 +324,7 @@ catch (std::exception e)
     return false;
 }
 
-ProgUpdate(10, "%s\n\n%s %s\n%s %s\n\n %s ...", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME),title.c_str(), getDumperLangSTR(TITLE_ID), title_id.c_str(), getDumperLangSTR(DUMPING_TROPHIES));
+ProgUpdate(10,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(DUMPING_TROPHIES));;
 
 try {
     // Trophy "decryption"
@@ -210,8 +349,8 @@ try {
             }
             dst /= "trophy" + std::string(zerofill, '0') + std::string(entry.trophy_number.data) + ".trp";
 
-            ProgUpdate(11, "%s\n\n%s %s\n%s %s\n\n %s %s...", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME), title.c_str(), getDumperLangSTR(TITLE_ID), title_id.c_str(), getDumperLangSTR(DUMPING_TROPHIES), src.c_str());
-            if (std::filesystem::exists(src)) {
+                ProgUpdate(11,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(DUMPING_TROPHIES) + " " + src.string());
+                if (std::filesystem::exists(src)) {
                 log_debug("[%s] Dumping Trophy %s to %s ...", title_id.c_str(), src.string().c_str(), dst.string().c_str());
                 if (!std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing)) {
                     log_error("Unable to copy %s", src.string().c_str());
@@ -248,7 +387,8 @@ catch (std::filesystem::filesystem_error& e)
     pfs_path /= "pfs_image.dat";
     try {
         if (std::filesystem::exists(pfs_path)) {
-            if (!pfs::extract(pfs_path.string(), output_path.string(), title_id.c_str(), (char*)title.c_str())) {
+            if (!pfs::extract(pfs_path.string(), output_path.string(), title_id, title)) {
+                log_error("Failed to extract pfs");
                 return false;
             }
         }
@@ -263,50 +403,10 @@ catch (std::filesystem::filesystem_error& e)
         return false;
     }
 
-
-
-  // Vector of strings for locations of SELF files for decryption
-  std::vector<std::string> self_files;
-
-  // Generate GP4
-
-  std::filesystem::path sfo_path(sce_sys_path);
-  sfo_path /= "param.sfo";
-
-  std::filesystem::path gp4_path(output_path);
-  gp4_path /= output_directory + ".gp4";
-
-
-ProgUpdate(98, "%s\n\n%s %s\n%s %s\n\n %s ...", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME), title.c_str(), getDumperLangSTR(TITLE_ID), title_id.c_str(), getDumperLangSTR(CREATING_GP4));
-try {
-    if (!gp4::generate(sfo_path.string(), output_path.string(), gp4_path.string(), self_files, opt))
-        return false;
+if(!DecryptAndMakeGP4(output_path.string(), title_id, opt, title)){
+    log_error("Decrypting and making GP4 failed");
+    return false;
 }
-catch (const std::exception& e)
-{
-    log_error("Gerneating GP4 failed");
-}
-
-
-  // Decrypt ELF files and make into FSELFs
-std::string encrypted_path("/mnt/sandbox/pfsmnt/");
-if (opt == BASE_GAME) {
-    encrypted_path += title_id + "-app0/";
-}
-else if (opt == GAME_PATCH) {
-    encrypted_path += title_id + "-patch0/";
-}
-else if (opt == THEME_UNLOCK) {
-    encrypted_path += title_id + "-ac/";
-}
-
-log_info("Step %i", __LINE__);
-std::string decrypted_path(output_path);
-
-ProgUpdate(99, "%s\n\n%s %s\n%s %s\n\n %s %s...", getDumperLangSTR(DUMP_INFO), getDumperLangSTR(APP_NAME), title.c_str(), getDumperLangSTR(TITLE_ID), title_id.c_str(), getDumperLangSTR(DEC_BIN), encrypted_path.c_str());
-log_debug("Decrypting Bins in %s ...", encrypted_path.c_str());
-
-elf::decrypt_dir(encrypted_path, decrypted_path);
 
  // Delete .dumping semaphore
 if (!std::filesystem::remove(dumping_semaphore)) 

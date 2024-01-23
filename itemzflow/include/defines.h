@@ -127,7 +127,7 @@
 #define APP_HOME_DATA_FOLDER "/user/app/NPXS29998"
 #define APP_HOME_DATA_TID "NPXS29998"
 #define APP_HOME_HOST_TID "NPXS29999"
-#define GL_CHECK(stmt) if(glGetError() != GL_NO_ERROR) msgok(FATAL, "GL_STATEMENT %s: %x", getLangSTR(FAILED_W_CODE),glGetError());
+#define GL_CHECK(stmt) if(glGetError() != GL_NO_ERROR) msgok(MSG_DIALOG::FATAL, "GL_STATEMENT %s: %x", getLangSTR(LANG_STR::FAILED_W_CODE),glGetError());
 #define PS4_OK 0
 #define INIT_FAILED -1
 #define DEBUG_SETTINGS_TID "NPXS20993"
@@ -155,7 +155,7 @@
 
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 03
+#define VERSION_MINOR 04
 
 #define BUILD_YEAR_CH0 (__DATE__[ 7])
 #define BUILD_YEAR_CH1 (__DATE__[ 8])
@@ -341,20 +341,6 @@ typedef enum {
     SFO_CHANGE_GAME_NAME
 } SFO_PATH_OPT;
 
-enum Settings_options
-{
-    CDN_SETTING,
-    TMP__SETTING,
-    HOME_MENU_SETTING,
-    INI_SETTING,
-    FNT__SETTING,
-    STORE_USB_SETTING,
-    CLEAR_CACHE_SETTING,
-    SHOW_INSTALL_PROG,
-    USE_PIXELSHADER_SETTING,
-    SAVE_SETTINGS,
-    NUM_OF_SETTINGS
-};
 
 int pingtest(int libnetMemId, int libhttpCtxId, const char* src);
 int32_t netInit(void);
@@ -367,16 +353,15 @@ int  thread_count_by_status(int req_status);
 int  thread_dispatch_index(void);
 
 /// from GLES2_badges
-int  scan_for_badges(layout_t* l, item_t* apps);
 void GLES2_Init_badge(void);
 void GLES2_Render_badge(int idx, vec4* rect);
 
 /// GLES2_filemamager
 void fw_action_to_fm(int button);
 void GLES2_render_filemanager(int unused);
-void GLES2_render_queue(layout_t* l, int used);
+void GLES2_render_queue(layout_t& l, int used);
 
 // UI panels new way, v3
-vec4 get_rect_from_index(const int idx, const layout_t* l, vec4* io);
+vec4 get_rect_from_index(const int idx, const layout_t& l, vec4* io);
 bool filter_entry_on_IDs(const char* entry);
 bool patch_sfo(const char* in_file_path, sfo_patch_t* patches);

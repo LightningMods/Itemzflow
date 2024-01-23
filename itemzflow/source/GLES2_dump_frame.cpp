@@ -47,10 +47,10 @@ void save_dumped_frame(void)
         log_info( "written %zub to: %s", res, tmp);
         fclose(fp);
 #else
-        writeImage(&tmp[0], resolution.x, resolution.y, dump_buffer, (char*)"HB Store");
+        writeImage(&tmp[0], resolution.x, resolution.y, dump_buffer, "HB Store");
 #endif
         // feedback!
-        ani_notify(NOTIFI_INFO, "Frame dumped!", "Dumped to USB");
+        ani_notify(NOTIFI::INFO, "Frame dumped!", "Dumped to USB");
     }
     free(dump_buffer), dump_buffer = NULL;
 }

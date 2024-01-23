@@ -18,6 +18,13 @@
 #include <user_mem.h>
 #include <time.h>
 #include <string.h>
+#include <sha256.h>
+#include <crc32.h>
+#include <sha1.h>
+#include <md5.h>
+#include <iomanip>
+#include <sstream>
+#include <sys/stat.h>
 
 namespace gp4 {
 
@@ -25,6 +32,7 @@ void recursive_directory(const std::string &path, pugi::xml_node &node) {
   // Check for empty or pure whitespace path
   if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty path argument!");
+    return;
   }
 
   for (auto &&p : std::filesystem::directory_iterator(path)) {
@@ -100,17 +108,18 @@ pugi::xml_document make_volume(const std::string& content_id, const std::string&
        package_node.append_attribute("storage_type") = "digital50";
 
     package_node.append_attribute("app_type") = "full";
-
+log_info("---------");
     // Set c_date
     std::string new_time = std::string("actual_datetime");
     if (!c_date.empty()) {
         new_time = c_date;
         if (!c_time.empty()) {
             // TODO: Append time to new_time
+            log_info("---------");
         }
     }
     package_node.append_attribute("c_date") = new_time.c_str();
-
+log_info("---------");
     return doc;
 }
 
@@ -153,94 +162,116 @@ pugi::xml_document make_playgo(const std::string& playgo_xml) {
     return doc;
 }
 
-pugi::xml_document make_files(const std::string& path, std::vector<std::string>& elf_files, Dump_Options opt) {
-    // Check for empty or pure whitespace path
-    bool is_illegal = false;
-    if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
-        log_fatal("Empty path argument!");
-    }
-    // Generate XML
-    pugi::xml_document doc;
-    const char* gp4_path;
-    pugi::xml_node files_node = doc.append_child("files");
-    files_node.append_attribute("img_no") = "0"; // TODO: PlayGo
+pugi::xml_document make_files(const std::string &path, bool validation) {
+  // Check for empty or pure whitespace path
+  if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
+    log_error("Empty path argument!");
+    return pugi::xml_document();
+  }
 
-     // Files to skip when making GP4
-    std::vector<std::string> skip_files = {
-      "sce_discmap.plt",
-      "sce_discmap_patch.plt",
-      "sce_sys/about/right.sprx", // Cannot be included for official PKG tools
-      "sce_sys/icon0.dds",
-      "sce_sys/license.dat",
-      "sce_sys/license.info",
-      "sce_sys/pic0.dds",
-      "sce_sys/pic1.dds",
-      "sce_sys/playgo-chunk.dat",
-      "sce_sys/playgo-chunk.sha",
-      "sce_sys/playgo-manifest.xml",
-      "sce_sys/psreserved.dat",
-      "sce_sys/origin-deltainfo.dat"
+  // Generate XML
+  pugi::xml_document doc;
+  pugi::xml_node files_node = doc.append_child("files");
+  files_node.append_attribute("img_no") = "0"; // TODO: PlayGo
+  // Files to skip when making GP4, but not the GP4FV
+  std::vector<std::string> skip_files = {};
+  if (!validation) {
+    skip_files = {
+        "sce_sys/about/right.sprx", // Cannot be included for official PKG tools
+        "sce_sys/about/",
+        "sce_sys/.digests",
+        "sce_sys/.entry_keys",
+        "sce_sys/.image_key",
+        "sce_sys/.unknown_0x21",
+        "sce_sys/.general_digests",
+        "sce_sys/.unknown_0xC0",
+        "sce_sys/.metas",
+        "sce_sys/.entry_names",
+        "sce_sys/license.dat",
+        "sce_sys/license.info",
+        "sce_sys/selfinfo.dat",         // ?
+        "sce_sys/imageinfo.dat",        // ?
+        "sce_sys/target-deltainfo.dat", // ?
+        "sce_sys/origin-deltainfo.dat",
+        "sce_sys/psreserved.dat",
+        "sce_sys/playgo-chunk.dat",
+        "sce_sys/playgo-chunk.sha",
+        "sce_sys/playgo-manifest.xml",
+        "sce_sys/pubtoolinfo.dat", // ?
+        "sce_sys/app/playgo-chunk.dat",
+        "sce_sys/app/playgo-chunk.sha",
+        "sce_sys/app/playgo-manifest.xml",
+        "sce_sys/icon0.dds",
+        "sce_sys/pic0.dds",
+        "sce_sys/pic1.dds"
     };
-
-    for (uint64_t i = 0; i < 100; i++) {
-        std::stringstream ss_image;
-        ss_image << "sce_sys/icon0_" << std::dec << std::setfill('0') << std::setw(2) << i << ".dds";
-        skip_files.push_back(ss_image.str());
-        ss_image.str(std::string());
-        ss_image << "sce_sys/pic0_" << std::dec << std::setfill('0') << std::setw(2) << i << ".dds";
-        skip_files.push_back(ss_image.str());
-        ss_image.str(std::string());
-        ss_image << "sce_sys/pic1_" << std::dec << std::setfill('0') << std::setw(2) << i << ".dds";
-        skip_files.push_back(ss_image.str());
+    for (auto &&f : skip_files) {
+      std::stringstream ss_encrypted;
+      ss_encrypted << f << ".encrypted";
+      skip_files.push_back(ss_encrypted.str());
     }
+    for (uint8_t i = 0; i < 31; i++) {
+      std::stringstream ss_image;
+      ss_image << "sce_sys/icon0_" << std::dec << std::setfill('0') << std::setw(2) << i << ".dds";
+      skip_files.push_back(ss_image.str());
+      ss_image.str(std::string());
+      ss_image << "sce_sys/pic1_" << std::dec << std::setfill('0') << std::setw(2) << i << ".dds";
+      skip_files.push_back(ss_image.str());
+    }
+  }
+  
+  for (auto &&p : std::filesystem::recursive_directory_iterator(path)) {
+    // Skip files/directories contained in the `skip_files` vector
+    if (std::count(skip_files.begin(), skip_files.end(), customRelative(p.path(), path))) {
+        continue;
+    }
+    else if(customRelative(p.path(), path).string().rfind(".fself") != std::string::npos){
+            continue;
+    }
+    else if (std::filesystem::is_regular_file(p.path())) {
+      std::filesystem::path targ_path = customRelative(p.path(), path);
+      std::filesystem::path orig_path = customRelative(p.path(), path);
+      // TODO:
+      //   - Add proper PlayGo options
+      //   - Add PFS Compression option
+      pugi::xml_node file_node = files_node.append_child("file");
+      file_node.append_attribute("targ_path") = targ_path.c_str();
 
-    for (auto&& p : std::filesystem::recursive_directory_iterator(path)) {
-        if (std::filesystem::is_regular_file(p.path())) {
-            bool self;
-            if ((self = elf::Check_ELF_Magic(p.path(), SELF_MAGIC))) {
-                elf_files.push_back(p.path());
-            }
-            // 20 is sizeof("/mnt/usb0/CUSA00000")
-            // 26 is sizeof("/mnt/usb0/CUSA00000-patch")
-            // 27 is sizeof("/mnt/usb0/CUSA00000-unlock")
-            // TODO:
-            //   - Add proper PlayGo options
-            //   - Add PFS Compression option
-            if(opt == GAME_PATCH)
-                 gp4_path = std::string(p.path()).c_str() + 26;
-            else if (opt == THEME_UNLOCK)
-                 gp4_path = std::string(p.path()).c_str() + 27;
-            else
-                 gp4_path = std::string(p.path()).c_str() + 20;
+     // std::string orig_path_mod = orig_path.c_str();
+      //std::replace(orig_path_mod.begin(), orig_path_mod.end(), '/', '\\');
+      file_node.append_attribute("orig_path") = orig_path.c_str();
+      if (validation) {
+        // Get filesize, crc32, md5, and sha1
+        file_node.append_attribute("size") = customFileSize(p.path()).c_str();
+        CRC32 crc32;
+        MD5 md5;
+        SHA1 sha1;
 
-            if (strstr(gp4_path, "sce_sys") != NULL) {
-                for (int i = 0; i < skip_files.size(); i++) {
-                    if (strcmp(gp4_path, skip_files[i].c_str()) == 0)
-                    {
-                        log_info("Found Illegal file %s skipping...", skip_files[i].c_str());
-                        is_illegal = true;
-                        break;
-                    }
-                }
-            }
-            else if (strstr(gp4_path, skip_files[0].c_str()) != NULL || strstr(gp4_path, skip_files[1].c_str()) != NULL)
-            {   // sce_discmap.plt sce_discmap_path.plt
-                // file skip
-                log_info("Found Illegal file %s skipping...", gp4_path);
-                is_illegal = true;
-            }
 
-            if (!is_illegal) {
-                log_info("Adding %s to GP4", gp4_path);
-                pugi::xml_node file_node = files_node.append_child("file");
-                file_node.append_attribute("targ_path") = gp4_path;
-                file_node.append_attribute("orig_path") = gp4_path;
-            }
-            is_illegal = false;
+        std::ifstream hash_data(p.path(), std::ios::in | std::ios::binary);
+        if (!hash_data || !hash_data.good()) {
+          hash_data.close();
+          log_error("Cannot open file: %s", std::string(p.path()).c_str());
+          return doc;
         }
-    }
 
-    return doc;
+        while (hash_data.good()) {
+          std::vector<unsigned char> buffer(PAGE_SIZE);
+          hash_data.read(reinterpret_cast<char *>(&buffer[0]), buffer.size()); // Flawfinder: ignore
+          crc32.add(&buffer[0], hash_data.gcount());
+          md5.add(&buffer[0], hash_data.gcount());
+          sha1.add(&buffer[0], hash_data.gcount());
+        }
+        hash_data.close();
+        file_node.append_attribute("crc") = &crc32.getHash()[0];
+        file_node.append_attribute("md5") = &md5.getHash()[0];
+        file_node.append_attribute("sha1") = &sha1.getHash()[0];
+
+      }
+    }
+  }
+
+  return doc;
 }
 
 pugi::xml_document make_directories(const std::string& path) {
@@ -396,7 +427,7 @@ void generate(const std::string& sfo_path, const std::string& output_path, const
     }
     // Generate actual GP4 file
     pugi::xml_document volume_xml = make_volume(content_id, content_type, c_date, c_time);
-    pugi::xml_document files_xml = make_files(output_path, self_files, opt);
+    pugi::xml_document files_xml = make_files(output_path, false);
     pugi::xml_document directories_xml = make_directories(output_path);
     pugi::xml_document playgo_xml;
     pugi::xml_document assembled_xml;

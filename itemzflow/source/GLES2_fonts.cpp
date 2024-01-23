@@ -125,21 +125,21 @@ void refresh_atlas(void)
     }
 }
 
-void clean_textures(layout_t *l)
+void clean_textures(layout_t & l)
 {
 /*
-    if(l->texture)
+    if(l.texture)
     {
-        log_info("%s: layout: %p, %p", __FUNCTION__, l, l->texture);
-        for(int i = 0; i < l->fieldsize.x * l->fieldsize.y; i++)
+        log_info("%s: layout: %p, %p", __FUNCTION__, l, l.texture);
+        for(int i = 0; i < l.fieldsize.x * l.fieldsize.y; i++)
         {
-            if(l->texture[i] != 0)
+            if(l.texture[i] != 0)
             {
-                log_info("glDeleteTextures texture[%2d]: %d", i, l->texture[i]);
-                glDeleteTextures(1, &l->texture[i] ), l->texture[i] = 0;
+                log_info("glDeleteTextures texture[%2d]: %d", i, l.texture[i]);
+                glDeleteTextures(1, &l.texture[i] ), l.texture[i] = 0;
             }
         }
-        free(l->texture), l->texture = NULL;
+        free(l.texture), l.texture = NULL;
     }
 */
 }
@@ -168,7 +168,7 @@ default_embedded: // fallback on error
     // prepare our set of different size
     if( ! ftgl_init_fonts( ttf, size ) )
     {   // custom data failed...
-        ani_notify(NOTIFI_WARNING, getLangSTR(TTF_ERROR_NOTIFY), getLangSTR(TTF_ERROR_NOTIFY2));
+        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::TTF_ERROR_NOTIFY), getLangSTR(LANG_STR::TTF_ERROR_NOTIFY2));
 
 #if defined (__ORBIS__)
         sceKernelIccSetBuzzer(3);

@@ -37,6 +37,7 @@ FMT_FUNC void assert_fail(const char* file, int line, const char* message) {
   // writing to stderr fails
   log_error("[ERR] %s:%d: assertion failed: %s", file, line, message);
   raise(SIGUSR2);
+  throw std::runtime_error("assertion failed");
 }
 
 FMT_FUNC void throw_format_error(const char* message) {

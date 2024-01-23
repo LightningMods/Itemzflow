@@ -48,10 +48,10 @@ void write_enable(std::string cfg_file, std::string patch_name) {
             state_data = "1\n";
             output_hash_file_stream << state_data;
             output_hash_file_stream.close();
-            // msgok(NORMAL, "TRUE");
+            // msgok(MSG_DIALOG::NORMAL, "TRUE");
             log_debug("setting %s true", cfg_file.c_str());
-            std::string patch_state = fmt::format("{} {}", getLangSTR(PATCH_SET1), patch_name);
-            ani_notify(NOTIFI_GAME, patch_state, "");
+            std::string patch_state = fmt::format("{} {}", getLangSTR(LANG_STR::PATCH_SET1), patch_name);
+            ani_notify(NOTIFI::GAME, patch_state, "");
         }
         if (data[0] == 0x31)
         {
@@ -59,10 +59,10 @@ void write_enable(std::string cfg_file, std::string patch_name) {
             state_data = "0\n";
             output_hash_file_stream << state_data;
             output_hash_file_stream.close();
-            // msgok(NORMAL, "FALSE");
+            // msgok(MSG_DIALOG::NORMAL, "FALSE");
             log_debug("setting %s false", cfg_file.c_str());
-            std::string patch_state = fmt::format("{} {}", getLangSTR(PATCH_SET0), patch_name);
-            ani_notify(NOTIFI_GAME, patch_state, "");
+            std::string patch_state = fmt::format("{} {}", getLangSTR(LANG_STR::PATCH_SET0), patch_name);
+            ani_notify(NOTIFI::GAME, patch_state, "");
         }
     }
     return;
@@ -157,7 +157,7 @@ void dl_patches(){
     std::string patch_path = patch_path_base + "/" + patch_zip;
     std::string patch_build_path = patch_path_base + "/patches/misc/patch_ver.txt";
     std::string patch_dl_msg;
-    loadmsg(getLangSTR(PATCH_DL_QUESTION_YES));
+    loadmsg(getLangSTR(LANG_STR::PATCH_DL_QUESTION_YES));
     int ret = dl_from_url(patch_url.c_str(), patch_path.c_str());
     if (ret != 0) // 0 != failed
     {
@@ -171,11 +171,11 @@ void dl_patches(){
         std::ifstream t(patch_build_path);
         std::stringstream buffer;
         buffer << t.rdbuf();
-        patch_dl_msg = fmt::format("{}\n{}", getLangSTR(PATCH_DL_COMPLETE), buffer.str());
+        patch_dl_msg = fmt::format("{}\n{}", getLangSTR(LANG_STR::PATCH_DL_COMPLETE), buffer.str());
     }
 
 error:
     sceMsgDialogTerminate();
-    msgok(NORMAL, patch_dl_msg);
+    msgok(MSG_DIALOG::NORMAL, patch_dl_msg);
     return;
 }

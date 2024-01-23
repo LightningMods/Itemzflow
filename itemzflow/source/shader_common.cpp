@@ -70,7 +70,7 @@ static GLuint compile(GLenum type, const char* source, int size) {
     glGetShaderiv(handle, GL_COMPILE_STATUS, &compile_result);
     if (compile_result == GL_FALSE) {
         glGetShaderInfoLog(handle, sizeof(msg), NULL, msg);
-        log_info("GLShader::compile: %u: %s\n", type, msg);
+        log_info("GLShader::compile: %u: %s", type, msg);
         glDeleteShader(handle);
         return GL_FALSE;
     }

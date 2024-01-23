@@ -1,7 +1,8 @@
 #pragma once
 #include <string>
 
-enum Lang_STR
+namespace LANG_STR {
+typedef enum
 {
 	RSA_LOAD,
 	RSA_FAILED,
@@ -161,7 +162,7 @@ enum Lang_STR
 	DUMP_1,
 	PSV_MENU,
 	SELECT_INTERACT,
-	GAME_SAVE_OPTS,
+	GAME_SAVE,
 	BACKUP_SAVE,
 	IMPORT_SAVE,
 	SAVE_DELETE,
@@ -465,9 +466,17 @@ enum Lang_STR
     REFRESH_HOSTAPP_DESC,
 	VAPP_MENU,
 	LNC_TOO_MANY_ROOT_FILES,
+	INSTALL_ALL_PKGS,
+    INSTALL_ALL_PKGS_DEC,
+	FAVORITES,
+    FAVORITES_DESC,
+    FAVORITES_ADD,
+    FAVORITES_REMOVE,
+	FAVORITES_REMOVED,
+	SEL_DUMP_VALID1,
 	// DO NOT DELETE THIS, ALWAYS KEEP AT THE BOTTOM
 	LANG_NUM_OF_STRINGS
-};
+} LANG_STRINGS;
 
 static const char *lang_key[LANG_NUM_OF_STRINGS] =
 	{
@@ -629,7 +638,7 @@ static const char *lang_key[LANG_NUM_OF_STRINGS] =
 		"DUMP_1",
 		"PSV_MENU",
 		"SELECT_INTERACT",
-		"GAME_SAVE_OPTS",
+		"GAME_SAVES_OPTS",
 		"BACKUP_SAVE",
 		"IMPORT_SAVE",
 		"SAVE_DELETE",
@@ -933,6 +942,15 @@ static const char *lang_key[LANG_NUM_OF_STRINGS] =
         "REFRESH_HOSTAPP_DESC",
 		"VAPP_MENU",
 		"LNC_TOO_MANY_ROOT_FILES",
+		"INSTALL_ALL_PKGS",
+        "INSTALL_ALL_PKGS_DEC",
+		"FAVORITES",
+        "FAVORITES_DESC",
+        "FAVORITES_ADD",
+        "FAVORITES_REMOVE",
+		"FAVORITES_REMOVED",
+		"SEL_DUMP_VALID1",
+};
 };
 
 #define NUMBER_OF_SETTINGS 12
@@ -942,6 +960,8 @@ static const char *lang_key[LANG_NUM_OF_STRINGS] =
 //#define OVERRIDE_LANG 3 // 0 JAP
 //#define TEST_INI_LANGS 1 
 bool LoadLangs(int LangCode);
-std::string getLangSTR(enum Lang_STR str);
+//
+std::string getLangSTR(LANG_STR::LANG_STRINGS str);
+std::string Language_GetName(int m_Code);
 int32_t PS4GetLang();
 bool load_embdded_eng();

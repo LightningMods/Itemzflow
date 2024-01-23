@@ -221,7 +221,7 @@ static int fuse_mount_core(const char *mountpoint, const char *opts, const struc
 	close(dev_trunk), dev_trunk = -1;
 
 
-	if(strstr(mountpoint, "/host") != NULL) {
+	if(strcmp(mountpoint, "/host") == 0 ) {
 	    fd = open("/dev/fuse0", O_RDWR);
 	    libfuse_print("Devpath: /dev/fuse0 fd: %d, mountpoint: %s", fd, mountpoint);
 	    if (fd == -1) {
@@ -235,7 +235,7 @@ static int fuse_mount_core(const char *mountpoint, const char *opts, const struc
 			return -1;
 		}
 	}
-	else if(strstr(mountpoint, "/hostapp") != NULL) {
+	else if(strcmp(mountpoint, "/hostapp") == 0) {
 	    fd = open("/dev/fuse1", O_RDWR);
 	    libfuse_print("Devpath: /dev/fuse1 fd: %d, mountpoint: %s", fd, mountpoint);
 	    if (fd == -1) {

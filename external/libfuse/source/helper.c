@@ -347,13 +347,13 @@ static int fuse_main_common(int argc, char *argv[],
 	fuse = fuse_setup_common(argc, argv, op, op_size, &mountpoint,
 				 &multithreaded, NULL, user_data, compat);
 	if (fuse == NULL)
-		return 1;
+		return -1;
 
 	res = fuse_loop_mt(fuse);
 
 	fuse_teardown_common(fuse, mountpoint);
 	if (res == -1)
-		return 1;
+		return -1;
 
 	return res;
 }

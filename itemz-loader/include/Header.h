@@ -31,7 +31,6 @@
 #define TRUE 1
 #define FALSE 0
 
-void logshit(char* format, ...);
 
 #define SCE_SYSMODULE_INTERNAL_SYS_CORE 0x80000004
 #define SCE_SYSMODULE_INTERNAL_NETCTL 0x80000009
@@ -152,26 +151,6 @@ void logshit(char* format, ...);
 #define SCE_SYSMODULE_INTERNAL_COMMON_DIALOG 0x80000018
 #define SCE_SYSMODULE_INTERNAL_SYSUTIL 0x80000018
 
-enum IPC_Errors
-{
-    INVALID = -1,
-    NO_ERROR = 0,
-    OPERATION_FAILED = 1,
-    DEAMON_UPDATING = 100
-};
-
-
-enum IPC_Commands
-{
-    CONNECTION_TEST = 1,
-    ENABLE_HOME_REDIRECT = 2,
-    DISABLE_HOME_REDIRECT = 3,
-    GAME_GET_MINS = 4,
-    GAME_GET_START_TIME = 5,
-    CRITICAL_SUSPEND = 6,
-    INSTALL_IF_UPDATE = 7,
-    DEAMON_UPDATE = 100
-};
 
 enum { CWD_KEEP, CWD_ROOT, CWD_RESET };
 extern void (*jbc_run_as_root)(void(*fn)(void* arg), void* arg, int cwd_mode);
@@ -199,24 +178,30 @@ LncAppParam;
 
 extern uint8_t daemon_eboot[];
 extern int32_t daemon_eboot_size;
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 int32_t sceSystemServiceHideSplashScreen();
 int32_t sceSystemServiceParamGetInt(int32_t paramId, int32_t *value);
 uint32_t sceLncUtilLaunchApp(const char* tid, const char* argv[], LncAppParam* param);
-bool boot_daemon_services();
 int sceLncUtilGetAppId(const char* tid);
 int sceSystemServiceLoadExec(const char* eboot, const char* argv[]);
 int copyFile(const char* sourcefile, const char* destfile);
 void loader_rooted(void *arg);
 void init_itemzGL_modules();
-int msgok(char* format, ...);
+int msgok(const char* format, ...);
 int loadmsg(char* format, ...);
 int pingtest(int libnetMemId, int libhttpCtxId, const char* src);
 int download_file(int libnetMemId, int libhttpCtxId, const char* src, const char* dst);
 bool if_exists(const char* path);
 int32_t netInit(void);
-void logshit(char* format, ...);
+void logshit(const char* format, ...);
 void init_STOREGL_modules();
 int sceKernelDebugOutText(int DBG_CHANNEL, const char* text);
 int Confirmation_Msg(const char* msg);
 bool rmtree(const char path[]);
+void *malloc(size_t size);
+#ifdef __cplusplus
+}
+#endif
+bool boot_daemon_services();

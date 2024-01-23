@@ -17,9 +17,13 @@
 #include <vector>
 #include <filesystem>
 #include <ps4sdk.h>
+#include "fself.hpp"
 #include <sys/stat.h>
 #include <sys/dirent.h>
-#include "libshahash.h"
+#include "sha256.h"
+#include <sstream>
+#include <crc32.h>
+#include <sha1.h>
 #include <user_mem.h>
 
 #define KB(x)   ((size_t) (x) << 10)
@@ -30,11 +34,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return 0;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return 0;
         }
 
         // Open path
@@ -42,12 +48,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: ");
+            return 0;
         }
 
         // Check to make sure file is a SELF
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             self_input.close();
             log_error("Input path is not a SELF!");
+            return 0;
         }
 
         // Read SELF header
@@ -57,6 +65,7 @@ namespace elf {
             // Should never reach here... will affect coverage %
             self_input.close();
             log_error("Error reading SELF header!");
+            return 0;
         }
 
         // Calculate ELF header offset from the number of SELF segments
@@ -69,6 +78,7 @@ namespace elf {
         if (!self_input.good()) {
             self_input.close();
             log_error("Error reading ELF header!");
+            return 0;
         }
         self_input.close();
 
@@ -82,6 +92,7 @@ namespace elf {
 
         if (std::memcmp(elf_header.e_ident, elf_magic, 4) != 0) {
             log_error("Error reading ELF magic!");
+            return 0;
         }
 
         // Calculate SCE header offset from number of ELF entries
@@ -99,11 +110,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return SceHeader();
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path)) {
             log_error("Input path does not exist or is not a file!");
+            return SceHeader();
         }
 
         // Open path
@@ -111,12 +124,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return SceHeader();
         }
 
         // Check to make sure file is a SELF
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             self_input.close();
             log_error("Input path is not a SELF!");
+            return SceHeader();
         }
 
         // Calculate SCE header offset from number of ELF entries
@@ -128,6 +143,7 @@ namespace elf {
         if (!self_input.good()) {
             self_input.close();
             log_error("Error reading SCE header!");
+            return SceHeader();
         }
 
         return sce_header;
@@ -137,11 +153,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return SceHeaderNpdrm();
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return SceHeaderNpdrm();
         }
 
         // Open path
@@ -149,12 +167,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return SceHeaderNpdrm();
         }
 
         // Check to make sure file is a SELF
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             self_input.close();
             log_error("Input path is not a SELF!");
+            return SceHeaderNpdrm();
         }
 
         // Calculate SCE header offset from number of ELF entries
@@ -176,11 +196,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return false;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path)) {
             log_error("Input path does not exist or is not a file!");
+            return false;
         }
 
         // Read SELF header
@@ -203,11 +225,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return false;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return false;
         }
 
         // Open path
@@ -215,12 +239,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return false;
         }
 
         // Check if the file is a SELF
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             self_input.close();
             log_error("Input path is not a SELF!");
+            return false;
         }
 
         // Read SELF header
@@ -230,6 +256,7 @@ namespace elf {
             // Should never reach here... will affect coverage %
             self_input.close();
             log_error("Error reading SELF header!");
+            return false;
         }
 
         uint64_t program_type = self_header.program_type;
@@ -249,11 +276,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return "";
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return "";
         }
 
         // Open path (To check permissions)
@@ -261,12 +290,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return "";
         }
         self_input.close();
 
         // Check if the file is a SELF. If it's not it *should* not have a SCE header
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             log_error("Input path is not a SELF!");
+            return "";
         }
 
         uint64_t program_type;
@@ -316,11 +347,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return 0;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return 0;
         }
 
         // Open path (To check permissions)
@@ -328,12 +361,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return 0;
         }
         self_input.close();
 
         // Check if the file is a SELF. If it's not it *should* not have a SCE header
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             log_error("Input path is not a SELF!");
+            return 0;
         }
 
         if (is_npdrm(path)) {
@@ -347,11 +382,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return 0;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return 0;
         }
 
         // Open path (To check permissions)
@@ -359,12 +396,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return 0;
         }
         self_input.close();
 
         // Check if the file is a SELF. If it's not it *should* not have a SCE header
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             log_error("Input path is not a SELF!");
+            return 0;
         }
 
         if (is_npdrm(path)) {
@@ -378,11 +417,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return 0;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return 0;
         }
 
         // Open path (To check permissions)
@@ -390,12 +431,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return 0;
         }
         self_input.close();
 
         // Check if the file is a SELF. If it's not it *should* not have a SCE header
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             log_error("Input path is not a SELF!");
+            return 0;
         }
 
         if (is_npdrm(path)) {
@@ -409,11 +452,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return std::vector<unsigned char>();
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return std::vector<unsigned char>();
         }
 
         // Open path (To check permissions)
@@ -421,12 +466,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return std::vector<unsigned char>();
         }
         self_input.close();
 
         // Check if the file is a SELF. If it's not it *should* not have a SCE header
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             log_error("Input path is not a SELF!");
+            return std::vector<unsigned char>();
         }
 
         std::vector<unsigned char> digest;
@@ -451,11 +498,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return std::vector<unsigned char>();
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return std::vector<unsigned char>();
         }
 
         // Open path (To check permissions)
@@ -463,12 +512,14 @@ namespace elf {
         if (!self_input || !self_input.good()) {
             self_input.close();
             log_error("Cannot open file: %s", path.c_str());
+            return std::vector<unsigned char>();
         }
         self_input.close();
 
         // Check if the file is a SELF
         if (!Check_ELF_Magic(path, SELF_MAGIC)) {
             log_error("Input path is not a SELF!");
+            return std::vector<unsigned char>();
         }
 
 #if defined(__ORBIS__)
@@ -503,11 +554,13 @@ namespace elf {
         // Check for empty or pure whitespace path
         if (original_path.empty() || std::all_of(original_path.begin(), original_path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty original path argument!");
+            return false;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(original_path.c_str())) {
             log_error("Input original path does not exist or is not a file!");
+            return false;
         }
 
         // Open path
@@ -515,22 +568,26 @@ namespace elf {
         if (!original_self || !original_self.good()) {
             original_self.close();
             log_error("Cannot open file: %s", original_path.c_str());
+            return false;
         }
         original_self.close();
 
         // Check if file is a SELF
         if (!Check_ELF_Magic(original_path, SELF_MAGIC)) {
             log_error("Input original path is not a SELF!");
+            return false;
         }
 
         // Check for empty or pure whitespace path
         if (decrypted_path.empty() || std::all_of(decrypted_path.begin(), decrypted_path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty decrypted path argument!");
+            return false;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(decrypted_path.c_str())) {
             log_error("Input decrypted path does not exist or is not a file!");
+            return false;
         }
 
         // Open path
@@ -538,72 +595,47 @@ namespace elf {
         if (!decrypted_elf || !decrypted_elf.good()) {
             decrypted_elf.close();
             log_error("Cannot open file: %s", decrypted_path.c_str());
+            return false;
         }
 
         // Check if file is an ELF
         if (!Check_ELF_Magic(decrypted_path)) {
             decrypted_elf.close();
             log_error("Input decrypted path is not an ELF!");
-        }
-
-        // Read digest
-        unsigned char digest[32];
-        std::vector<unsigned char> original_digest_from_self = get_digest(original_path);
-        for (size_t i = 0; i < sizeof(digest); i++) {
-            digest[i] = original_digest_from_self[i];
-        }
-
-        unsigned char calculated_digest[sizeof(digest)];
-
-        SHA256_CTX context;
-        SHA256_Init(&context);
-
-        while (decrypted_elf.good()) {
-            unsigned char buffer[PAGE_SIZE];
-            decrypted_elf.read((char*)buffer, sizeof(buffer)); // Flawfinder: ignore
-
-            SHA256_Update(&context, buffer, decrypted_elf.gcount());
-        }
-        decrypted_elf.close();
-
-        SHA256_Final(&context, calculated_digest);
-#if 1
-
-        char sha_digest[33] = { 0 };
-        char sha_calcdigest[33] = { 0 };
-
-        for (int i = 0; i < 32; ++i) {
-            snprintf(&sha_digest[i], 32, "%0x", (unsigned int)digest[i]);
-        }
-
-
-        for (int i = 0; i < 32; ++i) {
-            snprintf(&sha_calcdigest[i], 32, "%0x", (unsigned int)calculated_digest[i]);
-        }
-
-        log_info("[libshahash][SHA256] ELF Digest Hash: %s Calc'd Digest Hash: %s", sha_digest, sha_calcdigest);
-#endif
-
-        if (std::memcmp(calculated_digest, digest, sizeof(digest)) != 0) {
-            log_info("File %s has failed validation", decrypted_path.c_str());
             return false;
         }
-        else
-            log_info("File %s Successfully validated", decrypted_path.c_str());
 
-        return true;
-    }
+  // Read digest
+  std::vector<unsigned char> digest = get_digest(original_path);
+  std::vector<unsigned char> calculated_digest(digest.size());
 
+  SHA256 sha256;
+  while (decrypted_elf.good()) {
+    std::vector<unsigned char> buffer(PAGE_SIZE);
+    decrypted_elf.read(reinterpret_cast<char *>(&buffer[0]), buffer.size()); // Flawfinder: ignore
+    sha256.add(&buffer[0], decrypted_elf.gcount());
+  }
+  decrypted_elf.close();
+  sha256.getHash(&calculated_digest[0]);
+
+  if (std::memcmp(&calculated_digest[0], &digest[0], digest.size()) != 0) {
+    return false;
+  }
+
+  return true;
+}
     // This is done in other dumpers but is it necessary?
     void zero_section_header(const std::string& path) {
         // Check for empty or pure whitespace path
         if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
             log_error("Empty path argument!");
+            return;
         }
 
         // Check if file exists and is file
         if (!std::filesystem::is_regular_file(path.c_str())) {
             log_error("Input path does not exist or is not a file!");
+            return;
         }
 
         // Open path
@@ -611,12 +643,14 @@ namespace elf {
         if (!elf_path || !elf_path.good()) {
             elf_path.close();
             log_error("Cannot open file: %s", path.c_str());
+            return;
         }
 
         // Check if file is an ELF
         if (!Check_ELF_Magic(path, ELF_MAGIC)) {
             elf_path.close();
             log_error("Input path is not an ELF!");
+            return;
         }
 
         elf_path.seekg(0, elf_path.beg);
@@ -627,6 +661,7 @@ namespace elf {
             // Should never reach here... will affect coverage %
             elf_path.close();
             log_error("Error reading ELF header!");
+            return;
         }
         elf_path.close();
 
@@ -641,6 +676,7 @@ namespace elf {
             // Should never reach here... will affect coverage %
             output_file.close();
             log_error("Cannot open file: %s", path.c_str());
+            return;
         }
 
         output_file.seekp(0, output_file.beg);
@@ -763,7 +799,7 @@ namespace elf {
         return false;
     }
 
-    int decrypt_and_dump_self(const char* selfFile, const char* saveFile) {
+    bool decrypt_and_dump_self(const char* selfFile, const char* saveFile) {
 
         int fd = sceKernelOpen(selfFile, O_RDONLY, 0);
         if (fd > 0) {
@@ -807,59 +843,61 @@ namespace elf {
     // The following code inspired from:
     // - https://github.com/AlexAltea/orbital
     // - https://github.com/xvortex/ps4-dumper-vtx
-    bool decrypt_dir(const std::string& input, const std::string& output) {
+   bool decrypt_dir(const std::string& inputPath, const std::string& outputPath, bool fself = false) {
 
-        DIR* dir;
-        struct dirent* dp;
-        struct stat info;
-        char src_path[1024], dst_path[1024];
+    DIR* dir;
+    struct dirent* dp;
+    struct stat fileInfo;
 
-        dir = opendir(input.c_str());
-        if (!dir)
-            return true;
+    std::filesystem::path sourcePath;
+    std::filesystem::path destinationPath;
 
-        while ((dp = readdir(dir)) != NULL)
+    dir = opendir(inputPath.c_str());
+    if (!dir) return true;
+
+    while ((dp = readdir(dir)) != NULL)
+    {
+        if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0)
         {
-            if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
+            sourcePath = std::filesystem::path(inputPath) / dp->d_name;
+            destinationPath = std::filesystem::path(outputPath) / dp->d_name;
+
+            if (!stat(sourcePath.string().c_str(), &fileInfo))
             {
-                // do nothing (straight logic)
-            }
-            else
-            {
-                snprintf(src_path, 1023, "%s/%s", input.c_str(), dp->d_name);
-                snprintf(dst_path, 1023, "%s/%s", output.c_str(), dp->d_name);
-                if (!stat(src_path, &info))
+                if (S_ISDIR(fileInfo.st_mode))
                 {
-                    if (S_ISDIR(info.st_mode))
+                    std::filesystem::create_directory(destinationPath);
+                    decrypt_dir(sourcePath, destinationPath, fself);
+                }
+                else if (S_ISREG(fileInfo.st_mode))
+                {
+                    if (elf::Check_ELF_Magic(sourcePath.string().c_str(), SELF_MAGIC))
                     {
-                        mkdir(src_path, 0777);
-                        decrypt_dir(src_path, dst_path);
-                    }
-                    else
-                        if (S_ISREG(info.st_mode))
-                        {
-
-                            if (Check_ELF_Magic(src_path, SELF_MAGIC))
-                            {
-
-                                if (decrypt_and_dump_self(src_path, dst_path))
-                                {
-                                    //if (!is_valid_decrypt(src_path, dst_path))
-                                        log_error("failed to decrypt %s -> %s", src_path, dst_path);
-                                }
-                                
+                         if (!elf::decrypt_and_dump_self(sourcePath.string().c_str(), destinationPath.string().c_str()))
+                         {
+                            if (!elf::is_valid_decrypt(sourcePath.string().c_str(), destinationPath.string().c_str())) {
+                                log_warn("%s has Invalid ELF decryption!", destinationPath.string().c_str());
                             }
-                            else
-                               log_info("file: %s is NOT a self", src_path);
-                            
                         }
+
+                        if(fself) {
+                            log_info("file: %s is an fself", sourcePath.string().c_str());
+                            destinationPath = outputPath / std::filesystem::path(dp->d_name);
+                            destinationPath += ".fself";
+                            std::filesystem::copy(sourcePath, destinationPath, std::filesystem::copy_options::overwrite_existing);
+                        }
+                        else {
+                            log_info("file: %s is NOT an fself", sourcePath.string().c_str());
+                        }
+                    }
+                    else {
+                        log_info("file: %s is NOT a self", sourcePath.string().c_str());
+                    }
                 }
             }
         }
-        closedir(dir);
-
-        return true;
-
-
     }
+    closedir(dir);
+    return true;
+}
 } // namespace elf

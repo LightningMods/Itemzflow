@@ -19,9 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
-#include "net.h"
 #include <stdbool.h>
-#include <utils.h>
 #include <unistd.h>
 #include <stdarg.h>
 #include <sys/stat.h>
@@ -180,3 +178,34 @@
 #endif
 
 #define ULPMGR_THREAD_PRIO_BASE		(903)
+
+enum IPC_Errors
+{
+    INVALID = -1,
+    NO_ERROR = 0,
+    OPERATION_FAILED = 1,
+    INVALID_ARGUMENT = 2,
+    FUSE_IP_ALREADY_SET = 3,
+    FUSE_IP_NOT_SET = 4,
+    FUSE_FW_NOT_SUPPORTED = 5,
+};
+
+enum cmd
+{
+    
+    MACGUFFIN_CMD = 69,
+    SHUTDOWN_DAEMON = 1337,
+    CONNECTION_TEST = 1,
+    ENABLE_HOME_REDIRECT = 2,
+    DISABLE_HOME_REDIRECT = 3,
+    GAME_GET_MINS = 4,
+    GAME_GET_START_TIME = 5,
+    CRITICAL_SUSPEND = 6,
+    INSTALL_IF_UPDATE = 7,
+    RESTART_FTP_SERVICE = 8,
+    FUSE_SET_SESSION_IP = 9,
+    FUSE_SET_DEBUG_FLAG = 10,
+    FUSE_START_W_PATH = 11,
+    RESTART_FUSE_FS = 12,
+    DEAMON_UPDATE = 100,
+};

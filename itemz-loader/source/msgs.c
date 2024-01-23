@@ -42,7 +42,7 @@ int Confirmation_Msg(const char* msg)
     return NO;
 }
 
-int msgok(char* format, ...)
+int msgok(const char* format, ...)
 {
     int ret = 0;
 	sceSysmoduleLoadModule(ORBIS_SYSMODULE_MESSAGE_DIALOG);

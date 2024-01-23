@@ -48,7 +48,7 @@ void DL_ERROR(const char* name, int statusCode, struct dl_args *i)
     if (!i->is_threaded) 
         log_warn( "[HTTP] Download Failed with code HEX: %x Int: %i from Function %s src: %s", statusCode, statusCode, name, i->src);
     else 
-        msgok(WARNING, fmt::format("{0:}\n\nHEX: {1:#x} Int: {2:d}\nfrom Function {3:} src: {4:}", getLangSTR(DL_FAILED_W), statusCode, statusCode, name, i->src));
+        msgok(MSG_DIALOG::WARNING, fmt::format("{0:}\n\nHEX: {1:#x} Int: {2:d}\nfrom Function {3:} src: {4:}", getLangSTR(LANG_STR::DL_FAILED_W), statusCode, statusCode, name, i->src));
 }
 
 

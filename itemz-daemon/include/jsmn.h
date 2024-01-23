@@ -36,6 +36,9 @@ extern "C" {
 #define JSMN_API extern
 #endif
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+
 /**
  * JSON type identifier. Basic types are:
  * 	o Object

@@ -11,6 +11,7 @@
 #ifdef __ORBIS__
 #include "installpkg.h"
 #endif
+#include "feature_classes.hpp"
 char *err_msg = 0;
 
 sqlite3 *db = NULL;
@@ -91,10 +92,13 @@ bool SQL_Exec(const char *smt, int (*cb)(void *, int, char **, char **))
 
 int int_cb(void *in, int idc, char **argv, char **idc_2)
 {
-
-    int *numb = (int *)in;
-    *numb = atoi(argv[0]);
-
+    if (argv[0] != NULL) {  // Check if argv[0] is not NULL
+        int *numb = (int *)in;
+        *numb = atoi(argv[0]);
+    }
+    else{
+        log_error("SQL CB argv[0] is NULL");
+    }
     return 0;
 }
 
@@ -143,16 +147,13 @@ bool GameSave_Info(save_entry_t *item, int off)
     std::string tmp;
     int err = 0;
     sqlite3_stmt *stmt;
-    // lock mutex
-    pthread_mutex_lock(&disc_lock);
-    if(title_id.empty()){
+
+    if(title_id.get().empty()){
         log_error("title_id is empty");
-        pthread_mutex_unlock(&disc_lock);
         return false;
     }
 
-    item->title_id = title_id;
-    pthread_mutex_unlock(&disc_lock);
+    item->title_id = title_id.get();
     
     if ((err = sceUserServiceGetForegroundUser(&item->userid)) != ITEMZCORE_SUCCESS)
     {
@@ -262,6 +263,8 @@ bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value)
     u32 userId = -1;
     int ret, vis = -1;
 
+    log_info("[SQL] tid %s write_value %i", tid.c_str(), write_value);
+
     if (!SQL_Load_DB(APP_DB))
         return false;
 
@@ -279,7 +282,10 @@ bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value)
     if (sqlite3_exec(db, tmp.c_str(), int_cb, &vis, &err_msg) != SQLITE_OK)
     {
         log_error("[APPDB] Failed to fetch data: %s", sqlite3_errmsg(db));
-        sqlite3_free(err_msg);
+        
+        if(err_msg)
+           sqlite3_free(err_msg);
+
         goto error;
     }
 
@@ -291,7 +297,7 @@ bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value)
         return true;
     }
 
-    return vis;
+    return vis == 1;
 
 error:
     sqlite3_close(db);
@@ -513,7 +519,7 @@ bool insert_app_info(std::string titleId, std::string key, std::string value = s
 
 }
  
-bool Fix_Game_In_DB(std::vector<item_t> &app_info, int index, bool is_ext_hdd) {
+bool Fix_Game_In_DB(ThreadSafeVector<item_t> &app_info, int index, bool is_ext_hdd) {
   std::string tmp;
   std::string tmp2;
   int ret = -1;
@@ -549,7 +555,7 @@ bool Fix_Game_In_DB(std::vector<item_t> &app_info, int index, bool is_ext_hdd) {
 
       int ver = (ps4_fw_version() >> 16);
 
-      tmp = fmt::format("INSERT OR IGNORE INTO tbl_appbrowse_0{0:d}(titleId, contentId, titleName, metaDataPath, lastAccessTime, contentStatus, onDisc, parentalLevel, visible, sortPriority, pathInfo, lastAccessIndex, dispLocation, canRemove, category, contentType, pathInfo2, presentBoxStatus, entitlement, thumbnailUrl, lastUpdateTime, playableDate, contentSize, installDate, platform, uiCategory, skuId, disableLiveDetail, linkType, linkUri, serviceIdAddCont1, serviceIdAddCont2, serviceIdAddCont3, serviceIdAddCont4, serviceIdAddCont5, serviceIdAddCont6, serviceIdAddCont7, folderType, folderInfo, parentFolderId, positionInFolder, activeDate, entitlementTitleName, hddLocation, externalHddAppStatus, entitlementIdKamaji, mTime {1:}) VALUES('{2:}', \"{3:}\", '{4:}', '{5:}', '2022-02-06 14:03:08.359', 0, 0, '{6:}', 1, 100, 0, 0, 5, 1, '{7:}', 0, 0, 0, 0, NULL, NULL, NULL, '{8:d}', '2018-07-27 15:06:46.802', 0, '{9:}', NULL, 0, 0, NULL, '{10:}', '{11:}', '{12:}','{13:}', '{14:}', '{15:}', '{16:}', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, '2022-05-06 18:02:21.702'{17:})", userId, (ver > 0x555) ? ",freePsPlusContent, entitlementActiveFlag, sizeOtherHdd, entitlementHidden, preorderPlaceholderFlag, gatingEntitlementJson" : "", item.id, item.extra_sfo_data["CONTENT_ID"], item.name, item.is_ext_hdd ? "/user/appmeta/external/" + item.id : "/user/appmeta/" + item.id, item.extra_sfo_data["PARENTAL_LEVEL"], item.extra_sfo_data["CATEGORY"], file_size(item.package.c_str()), (item.extra_sfo_data["CATEGORY"] == "gde") ? "app" : "game", item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_1"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_2"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_3"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_4"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_5"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_6"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_7"], (ver > 0x555) ? ", 0,0, 0, 0, 0, NULL" : "");
+      tmp = fmt::format("INSERT OR IGNORE INTO tbl_appbrowse_0{0:d}(titleId, contentId, titleName, metaDataPath, lastAccessTime, contentStatus, onDisc, parentalLevel, visible, sortPriority, pathInfo, lastAccessIndex, dispLocation, canRemove, category, contentType, pathInfo2, presentBoxStatus, entitlement, thumbnailUrl, lastUpdateTime, playableDate, contentSize, installDate, platform, uiCategory, skuId, disableLiveDetail, linkType, linkUri, serviceIdAddCont1, serviceIdAddCont2, serviceIdAddCont3, serviceIdAddCont4, serviceIdAddCont5, serviceIdAddCont6, serviceIdAddCont7, folderType, folderInfo, parentFolderId, positionInFolder, activeDate, entitlementTitleName, hddLocation, externalHddAppStatus, entitlementIdKamaji, mTime {1:}) VALUES('{2:}', \"{3:}\", '{4:}', '{5:}', '2022-02-06 14:03:08.359', 0, 0, '{6:}', 1, 100, 0, 0, 5, 1, '{7:}', 0, 0, 0, 0, NULL, NULL, NULL, '{8:d}', '2018-07-27 15:06:46.802', 0, '{9:}', NULL, 0, 0, NULL, '{10:}', '{11:}', '{12:}','{13:}', '{14:}', '{15:}', '{16:}', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, '2022-05-06 18:02:21.702'{17:})", userId, (ver > 0x555) ? ",freePsPlusContent, entitlementActiveFlag, sizeOtherHdd, entitlementHidden, preorderPlaceholderFlag, gatingEntitlementJson" : "", item.info.id, item.extra_data.extra_sfo_data["CONTENT_ID"], item.info.name, item.flags.is_ext_hdd ? "/user/appmeta/external/" + item.info.id : "/user/appmeta/" + item.info.id, item.extra_data.extra_sfo_data["PARENTAL_LEVEL"], item.extra_data.extra_sfo_data["CATEGORY"], file_size(item.info.package.c_str()), (item.extra_data.extra_sfo_data["CATEGORY"] == "gde") ? "app" : "game", item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_1"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_2"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_3"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_4"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_5"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_6"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_7"], (ver > 0x555) ? ", 0,0, 0, 0, 0, NULL" : "");
       if (sqlite3_exec(db, tmp.c_str(), NULL, NULL, & err_msg) != SQLITE_OK || err_msg) {
         log_error("[AppDB][PASS1] Failed: %s", sqlite3_errmsg(db));
         sqlite3_free(err_msg);
@@ -559,7 +565,7 @@ bool Fix_Game_In_DB(std::vector<item_t> &app_info, int index, bool is_ext_hdd) {
         //return ::ispunct(ch);
         //}, ' ');
 
-        tmp = fmt::format("INSERT OR IGNORE INTO tbl_appbrowse_0{0:d}(titleId, contentId, titleName, metaDataPath, lastAccessTime, contentStatus, onDisc, parentalLevel, visible, sortPriority, pathInfo, lastAccessIndex, dispLocation, canRemove, category, contentType, pathInfo2, presentBoxStatus, entitlement, thumbnailUrl, lastUpdateTime, playableDate, contentSize, installDate, platform, uiCategory, skuId, disableLiveDetail, linkType, linkUri, serviceIdAddCont1, serviceIdAddCont2, serviceIdAddCont3, serviceIdAddCont4, serviceIdAddCont5, serviceIdAddCont6, serviceIdAddCont7, folderType, folderInfo, parentFolderId, positionInFolder, activeDate, entitlementTitleName, hddLocation, externalHddAppStatus, entitlementIdKamaji, mTime {1:}) VALUES('{2:}', \"{3:}\", '{4:}', '{5:}', '2022-02-06 14:03:08.359', 0, 0, '{6:}', 1, 100, 0, 0, 5, 1, '{7:}', 0, 0, 0, 0, NULL, NULL, NULL, '{8:d}', '2018-07-27 15:06:46.802', 0, '{9:}', NULL, 0, 0, NULL, '{10:}', '{11:}', '{12:}','{13:}', '{14:}', '{15:}', '{16:}', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, '2022-05-06 18:02:21.702'{17:})", userId, (ver > 0x555) ? ",freePsPlusContent, entitlementActiveFlag, sizeOtherHdd, entitlementHidden, preorderPlaceholderFlag, gatingEntitlementJson" : "", item.id, item.extra_sfo_data["CONTENT_ID"], sanitizeString(item.name), item.is_ext_hdd ? "/user/appmeta/external/" + item.id : "/user/appmeta/" + item.id, item.extra_sfo_data["PARENTAL_LEVEL"], item.extra_sfo_data["CATEGORY"], file_size(item.package.c_str()), (item.extra_sfo_data["CATEGORY"] == "gde") ? "app" : "game", item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_1"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_2"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_3"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_4"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_5"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_6"], item.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_7"], (ver > 0x555) ? ", 0,0, 0, 0, 0, NULL" : "");
+        tmp = fmt::format("INSERT OR IGNORE INTO tbl_appbrowse_0{0:d}(titleId, contentId, titleName, metaDataPath, lastAccessTime, contentStatus, onDisc, parentalLevel, visible, sortPriority, pathInfo, lastAccessIndex, dispLocation, canRemove, category, contentType, pathInfo2, presentBoxStatus, entitlement, thumbnailUrl, lastUpdateTime, playableDate, contentSize, installDate, platform, uiCategory, skuId, disableLiveDetail, linkType, linkUri, serviceIdAddCont1, serviceIdAddCont2, serviceIdAddCont3, serviceIdAddCont4, serviceIdAddCont5, serviceIdAddCont6, serviceIdAddCont7, folderType, folderInfo, parentFolderId, positionInFolder, activeDate, entitlementTitleName, hddLocation, externalHddAppStatus, entitlementIdKamaji, mTime {1:}) VALUES('{2:}', \"{3:}\", '{4:}', '{5:}', '2022-02-06 14:03:08.359', 0, 0, '{6:}', 1, 100, 0, 0, 5, 1, '{7:}', 0, 0, 0, 0, NULL, NULL, NULL, '{8:d}', '2018-07-27 15:06:46.802', 0, '{9:}', NULL, 0, 0, NULL, '{10:}', '{11:}', '{12:}','{13:}', '{14:}', '{15:}', '{16:}', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, '2022-05-06 18:02:21.702'{17:})", userId, (ver > 0x555) ? ",freePsPlusContent, entitlementActiveFlag, sizeOtherHdd, entitlementHidden, preorderPlaceholderFlag, gatingEntitlementJson" : "", item.info.id, item.extra_data.extra_sfo_data["CONTENT_ID"], sanitizeString(item.info.name), item.flags.is_ext_hdd ? "/user/appmeta/external/" + item.info.id : "/user/appmeta/" + item.info.id, item.extra_data.extra_sfo_data["PARENTAL_LEVEL"], item.extra_data.extra_sfo_data["CATEGORY"], file_size(item.info.package.c_str()), (item.extra_data.extra_sfo_data["CATEGORY"] == "gde") ? "app" : "game", item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_1"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_2"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_3"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_4"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_5"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_6"], item.extra_data.extra_sfo_data["SERVICE_ID_ADDCONT_ADD_7"], (ver > 0x555) ? ", 0,0, 0, 0, 0, NULL" : "");
         if (sqlite3_exec(db, tmp.c_str(), NULL, NULL, & err_msg) != SQLITE_OK || err_msg) {
           log_error("[AppDB][PASS2][FATAL] Failed: %s", sqlite3_errmsg(db));
           sqlite3_free(err_msg);
@@ -583,78 +589,78 @@ bool Fix_Game_In_DB(std::vector<item_t> &app_info, int index, bool is_ext_hdd) {
   }
 
   //print out extra sfo data
-  if (!insert_app_info(item.id, "TITLE", item.name)) {
-    insert_app_info(item.id, "TITLE", sanitizeString(item.name));
+  if (!insert_app_info(item.info.id, "TITLE", item.info.name)) {
+    insert_app_info(item.info.id, "TITLE", sanitizeString(item.info.name));
   }
-  insert_app_info(item.id, "TITLE_ID", item.id);
-  insert_app_info(item.id, "_metadata_path", item.is_ext_hdd ? "/user/appmeta/external/" + item.id : "/user/appmeta/" + item.id);
-  insert_app_info(item.id, "_org_path", item.is_ext_hdd ? "/mnt/ext0/user/app/" + item.id : "/user/app/" + item.id);
-  insert_app_info(item.id, "APP_VER", item.version);
-  insert_app_info(item.id, "ATTRIBUTE", item.extra_sfo_data["ATTRIBUTE"], false);
-  insert_app_info(item.id, "CATEGORY", item.extra_sfo_data["CATEGORY"]);
-  insert_app_info(item.id, "CONTENT_ID", item.extra_sfo_data["CONTENT_ID"]);
-  insert_app_info(item.id, "VERSION", item.extra_sfo_data["VERSION"]);
-  insert_app_info(item.id, "#_access_index", "1", false);
-  insert_app_info(item.id, "#_last_access_time", "2022-01-21 15:04:39.822");
-  insert_app_info(item.id, "#_contents_status", "0", false);
-  insert_app_info(item.id, "#_mtime", "2022-01-21 15:04:39.822");
-  insert_app_info(item.id, "_contents_location", "0", false);
-  insert_app_info(item.id, "#_update_index", "0", false);
-  insert_app_info(item.id, "#exit_type", "0", false);
-  insert_app_info(item.id, "DISP_LOCATION_1", "0", false);
-  insert_app_info(item.id, "DISP_LOCATION_2", "0", false);
-  insert_app_info(item.id, "DOWNLOAD_DATA_SIZE", item.extra_sfo_data["DOWNLOAD_DATA_SIZE"], false);
-  insert_app_info(item.id, "FORMAT", "obs");
-  insert_app_info(item.id, "PARENTAL_LEVEL", item.extra_sfo_data["PARENTAL_LEVEL"], false);
-  insert_app_info(item.id, "SYSTEM_VER", item.extra_sfo_data["SYSTEM_VER"], false);
+  insert_app_info(item.info.id, "TITLE_ID", item.info.id);
+  insert_app_info(item.info.id, "_metadata_path", item.flags.is_ext_hdd ? "/user/appmeta/external/" + item.info.id : "/user/appmeta/" + item.info.id);
+  insert_app_info(item.info.id, "_org_path", item.flags.is_ext_hdd ? "/mnt/ext0/user/app/" + item.info.id : "/user/app/" + item.info.id);
+  insert_app_info(item.info.id, "APP_VER", item.info.version);
+  insert_app_info(item.info.id, "ATTRIBUTE", item.extra_data.extra_sfo_data["ATTRIBUTE"], false);
+  insert_app_info(item.info.id, "CATEGORY", item.extra_data.extra_sfo_data["CATEGORY"]);
+  insert_app_info(item.info.id, "CONTENT_ID", item.extra_data.extra_sfo_data["CONTENT_ID"]);
+  insert_app_info(item.info.id, "VERSION", item.extra_data.extra_sfo_data["VERSION"]);
+  insert_app_info(item.info.id, "#_access_index", "1", false);
+  insert_app_info(item.info.id, "#_last_access_time", "2022-01-21 15:04:39.822");
+  insert_app_info(item.info.id, "#_contents_status", "0", false);
+  insert_app_info(item.info.id, "#_mtime", "2022-01-21 15:04:39.822");
+  insert_app_info(item.info.id, "_contents_location", "0", false);
+  insert_app_info(item.info.id, "#_update_index", "0", false);
+  insert_app_info(item.info.id, "#exit_type", "0", false);
+  insert_app_info(item.info.id, "DISP_LOCATION_1", "0", false);
+  insert_app_info(item.info.id, "DISP_LOCATION_2", "0", false);
+  insert_app_info(item.info.id, "DOWNLOAD_DATA_SIZE", item.extra_data.extra_sfo_data["DOWNLOAD_DATA_SIZE"], false);
+  insert_app_info(item.info.id, "FORMAT", "obs");
+  insert_app_info(item.info.id, "PARENTAL_LEVEL", item.extra_data.extra_sfo_data["PARENTAL_LEVEL"], false);
+  insert_app_info(item.info.id, "SYSTEM_VER", item.extra_data.extra_sfo_data["SYSTEM_VER"], false);
 
-  if (!item.extra_sfo_data["INSTALL_DIR_SAVEDATA"].empty())
-    insert_app_info(item.id, "INSTALL_DIR_SAVEDATA", item.extra_sfo_data["INSTALL_DIR_SAVEDATA"]);
+  if (!item.extra_data.extra_sfo_data["INSTALL_DIR_SAVEDATA"].empty())
+    insert_app_info(item.info.id, "INSTALL_DIR_SAVEDATA", item.extra_data.extra_sfo_data["INSTALL_DIR_SAVEDATA"]);
 
   for (int i = 1; i <= 4; i++) {
-    insert_app_info(item.id, fmt::format("USER_DEFINED_PARAM_{0:d}", i), item.extra_sfo_data[fmt::format("USER_DEFINED_PARAM_{0:d}", i)], false);
+    insert_app_info(item.info.id, fmt::format("USER_DEFINED_PARAM_{0:d}", i), item.extra_data.extra_sfo_data[fmt::format("USER_DEFINED_PARAM_{0:d}", i)], false);
   }
   for (int i = 1; i <= 7; i++) {
     std::string SERV_ID = fmt::format("SERVICE_ID_ADDCONT_APPINFO_ADD_{0:d}", i);
     std::string SERV_ID2 = fmt::format("SERVICE_ID_ADDCONT_ADD_{0:d}", i);
-    if (!item.extra_sfo_data[SERV_ID].empty())
-      insert_app_info(item.id, SERV_ID2, item.extra_sfo_data[SERV_ID]);
+    if (!item.extra_data.extra_sfo_data[SERV_ID].empty())
+      insert_app_info(item.info.id, SERV_ID2, item.extra_data.extra_sfo_data[SERV_ID]);
     else
-      insert_app_info(item.id, SERV_ID2, "0", false);
+      insert_app_info(item.info.id, SERV_ID2, "0", false);
   }
   for (int i = 0; i < 30; i++) {
     std::string title = fmt::format("TITLE_{0:}{1:d}", (i < 10) ? "0" : "", i);
-    if (!item.extra_sfo_data[title].empty()) {
-      if (!insert_app_info(item.id, title, item.extra_sfo_data[title])) {
+    if (!item.extra_data.extra_sfo_data[title].empty()) {
+      if (!insert_app_info(item.info.id, title, item.extra_data.extra_sfo_data[title])) {
 
-        //std::replace_if(item.extra_sfo_data[title].begin(), item.extra_sfo_data[title].end(), [](auto ch) {
+        //std::replace_if(item.extra_data.extra_sfo_data[title].begin(), item.extra_data.extra_sfo_data[title].end(), [](auto ch) {
        // return ::ispunct(ch);
         //}, ' ');
 
-        insert_app_info(item.id, title, sanitizeString(item.extra_sfo_data[title]));
+        insert_app_info(item.info.id, title, sanitizeString(item.extra_data.extra_sfo_data[title]));
       }
     }
   }
-  insert_app_info(item.id, "_contents_ext_type", "0", false);
-  insert_app_info(item.id, "_current_slot", "0", false);
-  insert_app_info(item.id, "_disable_live_detail", "0", false);
-  insert_app_info(item.id, "_external_hdd_app_status", "0", false);
-  insert_app_info(item.id, "_hdd_location", "0", false);
-  insert_app_info(item.id, "_path_info", "0", false);
-  insert_app_info(item.id, "_path_info_2", "0", false);
-  insert_app_info(item.id, "_size_other_hdd", "0", false);
-  insert_app_info(item.id, "_sort_priority", "100", false);
-  insert_app_info(item.id, "_uninstallable", "1", false);
-  insert_app_info(item.id, "_view_category", "0", false);
-  insert_app_info(item.id, "_working_status", "0", false);
-  insert_app_info(item.id, "ATTRIBUTE2", item.extra_sfo_data["ATTRIBUTE2"], false);
-  insert_app_info(item.id, "ATTRIBUTE_INTERNAL", item.extra_sfo_data["ATTRIBUTE_INTERNAL"], false);
-  insert_app_info(item.id, "PT_PARAM", item.extra_sfo_data["PT_PARAM"], false);
-  insert_app_info(item.id, "APP_TYPE", item.extra_sfo_data["APP_TYPE"], false);
-  insert_app_info(item.id, "REMOTE_PLAY_KEY_ASSIGN", item.extra_sfo_data["REMOTE_PLAY_KEY_ASSIGN"], false);
-  insert_app_info(item.id, "#_promote_time", "2022-01-21 15:04:39.822");
-  insert_app_info(item.id, "#_booted", "1", false);
-  insert_app_info(item.id, "#_size", std::to_string(file_size(item.package.c_str())), false);
+  insert_app_info(item.info.id, "_contents_ext_type", "0", false);
+  insert_app_info(item.info.id, "_current_slot", "0", false);
+  insert_app_info(item.info.id, "_disable_live_detail", "0", false);
+  insert_app_info(item.info.id, "_external_hdd_app_status", "0", false);
+  insert_app_info(item.info.id, "_hdd_location", "0", false);
+  insert_app_info(item.info.id, "_path_info", "0", false);
+  insert_app_info(item.info.id, "_path_info_2", "0", false);
+  insert_app_info(item.info.id, "_size_other_hdd", "0", false);
+  insert_app_info(item.info.id, "_sort_priority", "100", false);
+  insert_app_info(item.info.id, "_uninstallable", "1", false);
+  insert_app_info(item.info.id, "_view_category", "0", false);
+  insert_app_info(item.info.id, "_working_status", "0", false);
+  insert_app_info(item.info.id, "ATTRIBUTE2", item.extra_data.extra_sfo_data["ATTRIBUTE2"], false);
+  insert_app_info(item.info.id, "ATTRIBUTE_INTERNAL", item.extra_data.extra_sfo_data["ATTRIBUTE_INTERNAL"], false);
+  insert_app_info(item.info.id, "PT_PARAM", item.extra_data.extra_sfo_data["PT_PARAM"], false);
+  insert_app_info(item.info.id, "APP_TYPE", item.extra_data.extra_sfo_data["APP_TYPE"], false);
+  insert_app_info(item.info.id, "REMOTE_PLAY_KEY_ASSIGN", item.extra_data.extra_sfo_data["REMOTE_PLAY_KEY_ASSIGN"], false);
+  insert_app_info(item.info.id, "#_promote_time", "2022-01-21 15:04:39.822");
+  insert_app_info(item.info.id, "#_booted", "1", false);
+  insert_app_info(item.info.id, "#_size", std::to_string(file_size(item.info.package.c_str())), false);
 
   sqlite3_close(db), db = NULL;
 
