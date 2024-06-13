@@ -9,6 +9,12 @@
 extern "C" {
 #endif
 
+
+struct curl_slist {
+  char *data;
+  struct curl_slist *next;
+};
+
 #define curl_off_t size_t
 #define ORBIS_NET_CTL_INFO_DEVICE           1
 #define ORBIS_NET_CTL_INFO_ETHER_ADDR       2
@@ -3062,11 +3068,21 @@ typedef struct {
  //CURLcode (*curl_easy_getinfo)(CURL *curl, CURLINFO info, ...);
  extern CURLcode (*curl_easy_getinfo)(CURL *handle, CURLINFO info, long *codep);
 
+ extern struct curl_slist * curl_slist_append(struct curl_slist *list, const char *data);
+ extern void curl_slist_free_all(struct curl_slist *list);
+ extern void (*curl_global_cleanup)(void);
+ 
+
 //static CURLcode (*curl_easy_pause)(CURL *curl, int bitmask);
 //static CURLcode (*curl_easy_reset)(CURL *curl);
  extern const char *(*curl_easy_strerror)(CURLcode errornum) ;
 #define curl_easy_setopt(handle,opt,param) curl_easy_setopt(handle,opt,param)
 #define curl_easy_getinfo(handle,info,arg) curl_easy_getinfo(handle,info,arg)
+
+#define Curl_safefree(ptr) \
+  do { free((ptr)); (ptr) = NULL;} while(0)
+
+
 
 
 #define CURLPAUSE_RECV      (1<<0)

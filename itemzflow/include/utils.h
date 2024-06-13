@@ -23,7 +23,7 @@
 #ifdef __ORBIS__
 #include <user_mem.h>
 #include <dumper.h>
-#include "ipc_client.hpp"
+#include "secrets.h"
 #endif
 #include "ipc_client.hpp"
 #define DIM(x)  (sizeof(x)/sizeof(*(x)))
@@ -35,7 +35,12 @@
 
 
 #define ORBIS_SYSMODULE_MESSAGE_DIALOG 0x00A4 // libSceMsgDialog.sprx
-#define DUMPER_LOG "/user/app/ITEM00001/logs/if_dumper.log"
+#define DUMPER_LOG "/user/app/ITEM00001/logs/dumper.log"
+#define ITEMZ_LOG "/user/app/ITEM00001/logs/itemzflow_app.log"
+#define ITEMZ_LOADER_LOG "/user/app/ITEM00001/logs/loader.log"
+
+bool create_log_zip(const char *zip_file);
+
 #define STORE_TID "NPXS39041"
 
 /*
@@ -138,7 +143,7 @@ typedef enum {
 #define DAEMON_PATH "/system/vsh/app/ITEM00002"
 
 bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value);
-
+bool count_dlc(std::string tid, int &vaild_dlcs, int &avail_dlcs, bool verbose);
 //#define assert(expr) if (!(expr)) msgok(MSG_DIALOG::FATAL, "Assertion Failed!");
 
 #define YES 1
@@ -201,6 +206,8 @@ typedef enum Dump_Options {
 */
 
 extern multi_select_options::Dump_Multi_Sels dump;
+
+bool does_patch_exist(std::string tid);
 
 enum SORT_APPS_BY {
     SORT_NA = -1,
@@ -652,7 +659,7 @@ int Messagebox(const char* title, const wchar_t* text, const Button* buttons, in
 void loadmsg(std::string in);
 std::vector<uint8_t> readFile(std::string filename);
 std::ifstream::pos_type file_size(const char* filename);
-bool Fix_Game_In_DB(ThreadSafeVector<item_t> &app_info, int index, bool is_ext_hdd);
+bool Fix_Game_In_DB(item_t &item, bool is_ext_hdd);
 int check_syscalls();
 int mount_fuse(const char* device, const char* mountpoint);
 extern int (*rejail_multi)(void);
@@ -678,6 +685,8 @@ void ProgSetMessagewText(int prog, const char* fmt, ...);
 bool rmtree(const char path[]);
 void scan_for_disc();
 unsigned char* load_png_asset(const char* relative_path, std::atomic<bool> &is_loaded, struct AppIcon::ImageData& data);
+uint32_t installPatchPKG(const char *url, const char *title_id);
 void load_png_cover_data_into_texture(struct AppIcon::ImageData& data, std::atomic<bool>& needs_loaded, std::atomic<GLuint>& tex);
 void ProgressUpdate(uint32_t prog, std::string fmt);
+void upload_crash_log(bool is_try_recovery = false);
 #define UNUSED(x) (void)X

@@ -17,6 +17,8 @@
 #include "feature_classes.hpp"
 #include "log.h"
 
+#include "installpkg.h"
+
 double dt, u_t = 0;
 
 int libcmi = -1;
@@ -54,8 +56,48 @@ typedef struct UtiltiyPadConfig
 	ScePadData padDataLast;
 
 }UtiltiyPadConfig;
+#include <stdatomic.h>
+atomic_bool is_inilized = false;
 
+void* ItemzCore_PlayTime_thread(void* args) {
+    log_info("Starting playtime main loop");
+   // std::string checked_tid;
+    while (true) 
+    {
+        int secs = 0;
+        if(is_idle.load()) {
+            continue;
+        }
 
+        IPC_Client& ipc = IPC_Client::getInstance();
+
+        if(title_id.get().empty()){
+           sleep(1);
+           continue;
+        }
+
+       std::string ipc_msg = title_id.get();
+       if (is_connected_app && ipc.IPCSendCommand(IPC_Commands::GAME_GET_MINS, ipc_msg, true) == IPC_Ret::NO_ERROR) {
+            int result;
+            sscanf(ipc_msg.c_str(), "%d", &result);
+            mins_played = result;
+           // checked_tid = title_id.get();
+        } else {
+            mins_played = MIN_STATUS_NA;
+        }
+
+        do{
+            sleep(1);
+            secs++;
+            if(secs > 50){
+                log_info("50 sec check started");
+                break;
+            }
+        }while (mins_played != MIN_STATUS_RESET);
+    }
+
+    return nullptr;
+}
 void* ItemzCore_Util_thread(void* args) {
     int ret = -1;
     u32 userId = -1;
@@ -71,12 +113,14 @@ void* ItemzCore_Util_thread(void* args) {
        ani_notify(NOTIFI::PROFILE, fmt::format("{0:}: {1:}", getLangSTR(LANG_STR::SIGN_IN_USER_NOTIF), name), "");
     }
 
+    while(!is_inilized){
+        sceKernelUsleep(500);
+   }
+
     time_t idle_clock = time(NULL);
 
     while (true) 
     {
-        IPC_Client& ipc = IPC_Client::getInstance();
-        std::string ipc_msg;
         if(reset_idle_timer.load()) {
             idle_clock = time(NULL);
             reset_idle_timer = false;
@@ -94,6 +138,7 @@ void* ItemzCore_Util_thread(void* args) {
         if(is_idle.load()) {
             continue;
         }
+
         // re-get the userid incase it changed
         sceUserServiceGetForegroundUser(&userId);
 
@@ -106,9 +151,7 @@ void* ItemzCore_Util_thread(void* args) {
             GLES2_refresh_sysinfo();
             log_error("scePadReadState: %x, userid: %x, handle: %x", ret, userId, scePadGetHandle(userId,0,0));
         }
-
         scan_for_disc();
-
         //check if theres a usb
         if(!usb_found && usbpath() != -1){
             usb_found = true;
@@ -123,8 +166,16 @@ void* ItemzCore_Util_thread(void* args) {
         }
 
         // Replace the use of ipc_msg with vecto
-        if(title_id.get().empty() || app_status.load() == NO_APP_OPENED)
+        if(title_id.get().empty()){
+           sleep(1);
            continue;
+        }
+
+
+        if(app_status.load() == NO_APP_OPENED){
+           sleep(1);
+           continue;
+        }
 
         int BigAppid = sceSystemServiceGetAppIdOfBigApp();
         // IS Big App Running?
@@ -143,16 +194,6 @@ void* ItemzCore_Util_thread(void* args) {
             }
         }
 
-        ipc_msg = title_id.get();
-
-        if (is_connected_app && ipc.IPCSendCommand(IPC_Commands::GAME_GET_MINS, ipc_msg, true) == IPC_Ret::NO_ERROR) {
-            int result;
-            sscanf(ipc_msg.c_str(), "%d", &result);
-            mins_played = result;
-        } else {
-            mins_played = MIN_STATUS_NA;
-        }
-
        sleep(1);
     }
  
@@ -166,6 +207,7 @@ int button_numb = -1;
 int if_numb = -1;
 bool check_if_held = false;
 
+void (*crash)() = NULL;
 
 void updateController()
 {
@@ -307,6 +349,8 @@ void updateController()
         if(orbisPadGetButtonPressed(ORBISPAD_R2))
         {
             reset_idle_timer = true;
+            // crash();
+            /// throw std::runtime_error("Crash");
         }
         if (orbisPadGetButtonPressed(ORBISPAD_OPTIONS))
         {
@@ -395,7 +439,7 @@ int main(int argc, char* argv[])
     std::chrono::steady_clock::time_point lastUpdate;
    // vec4 c = col * .75f;
 
-    pthread_t utility_thread = NULL;
+    pthread_t utility_thread = NULL, playtime_thr = NULL;
     /* load custom .prx, resolve and call a function */
     rejail_multi = (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "rejail_multi");
     jailbreak_me = (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "jailbreak_me");
@@ -409,6 +453,7 @@ int main(int argc, char* argv[])
 
     if (Start_IF_internal_Services(argv[0]) == INIT_FAILED) goto error;
 
+    log_info("Starting GL ...");
     // init some libraries
     flag = initApp();
 
@@ -423,22 +468,26 @@ int main(int argc, char* argv[])
     init_ItemzCore(ATTR_ORBISGL_WIDTH, ATTR_ORBISGL_HEIGHT);
     log_info("ItemzCore started.");
 
-    log_info("Starting the ItemzCore Utility Thread ...");
-    pthread_create(&utility_thread, NULL, ItemzCore_Util_thread, NULL);
-    log_info("ItemzCore Utility Thread Started");
+   log_info("Starting the ItemzCore Utility Thread ...");
+   pthread_create(&utility_thread, NULL, ItemzCore_Util_thread, NULL);
+   log_info("ItemzCore Utility Thread Started");
+
+   log_info("Starting the ItemzCore Playtime Thread ...");
+   pthread_create(&playtime_thr, NULL, ItemzCore_PlayTime_thread, NULL);
+   log_info("ItemzCore Playtime Thread Started");
 
 
     /// reset timers
     now = std::chrono::system_clock::now();
+
     time_ms = get_time_ms(now);
-
     lastUpdate = std::chrono::steady_clock::now();
-
     //close any still running dialogs
     sceMsgDialogTerminate();
 
     // Initialize FPS counter
     fpsTime1 = sceKernelGetProcessTime();
+
     prev = std::chrono::system_clock::now();
 
     /// enter main render loop
@@ -448,8 +497,11 @@ int main(int argc, char* argv[])
         //so theres no race between 
         //the countroller update and the GLES UI
 
-         if (frame != 1)
+         if (frame != 1){
             updateController();
+            if(!is_inilized)
+                is_inilized = true;
+         }
 
     if(check_if_held && !orbisPadGetButtonReleased(button_numb)) {
        struct timeval tv;
@@ -479,7 +531,6 @@ int main(int argc, char* argv[])
       speed2 = false;
       speed3 = false;
     }
-
          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
          ret = glGetError();
@@ -487,7 +538,6 @@ int main(int argc, char* argv[])
              log_info("[ORBIS_GL] glClear failed: 0x%08X", ret);
                 //goto err;
             }
-
             // Render ItemzCore
             Render_ItemzCore();
 
@@ -526,7 +576,7 @@ int main(int argc, char* argv[])
                 print_memory();
                 //reset Frame so we dont overflow later in release
                 frame = 1;
-                // MIN_STATUS_RESET wait for 120 frames to reset the status
+                // increase MIN status reset every so often (most of the time 15 secs)
                 mins_played = MIN_STATUS_RESET;
                 log_info("---------------------------------------------------");
                 //time_ms = now;

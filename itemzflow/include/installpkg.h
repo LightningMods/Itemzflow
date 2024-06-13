@@ -50,7 +50,6 @@ struct bgft_download_param {
 };
 
 
-
 struct bgft_download_param_ex {
     struct bgft_download_param param;
     unsigned int slot;
@@ -168,7 +167,7 @@ int sceBgftServiceDownloadResumeTask(SceBgftTaskId taskId);
 int sceBgftServiceDownloadResumeTaskAll(void);
 int sceBgftServiceDownloadStopTask(SceBgftTaskId taskId);
 int sceBgftServiceDownloadStopTaskAll(void);
-
+int sceBgftServiceIntDebugDownloadRegisterPkg(struct bgft_download_param_ex* params, int* task_id);
 int sceBgftServiceDownloadGetProgress(SceBgftTaskId taskId, SceBgftTaskProgress* progress);
 
 
@@ -182,8 +181,10 @@ int sceAppInstUtilCheckAppSystemVer(const char* title_id, uint64_t buf, uint64_t
 int sceAppInstUtilAppPrepareOverwritePkg(const char* pkg_path);
 int sceAppInstUtilGetPrimaryAppSlot(const char* title_id, int* slot);
 int sceAppInstUtilAppUnInstall(const char* title_id);
+int sceBgftServiceDownloadRegisterTask(struct bgft_download_param *params, int *task);
 int sceAppInstUtilAppGetSize(const char* title_id, uint64_t* buf);
 int sceBgftServiceInit(struct bgft_init_params*  params);
+int sceBgftServiceIntDownloadReregisterTaskPatch(SceBgftTaskId oldTaskId, SceBgftTaskId* newTaskId);
 int sceBgftServiceIntDownloadRegisterTaskByStorageEx(struct bgft_download_param_ex* params, int* task_id);
 int sceBgftServiceDownloadStartTask(int task_id);
 int sceBgftServiceTerm(void);
@@ -191,3 +192,5 @@ int sceBgftServiceTerm(void);
 }  
 #endif
 uint32_t pkginstall(const char *fullpath, const char* filename, bool Show_install_prog, bool delete_pkg_after, int max_pkgs = 1, int curr_pkg = 1);
+uint32_t installPatchPKG(const char *url, const char *title_id, const char* icon_path);
+bool Install_Store();

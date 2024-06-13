@@ -22,16 +22,16 @@
 #endif
 #include <errno.h>
 
+#include "patcher.h"
+#include <algorithm>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include <cstdlib>
 #if defined(__ORBIS__)
-#include "patcher.h"
 #include "../external/pugixml/pugixml.hpp"
 extern int retry_mp3_count;
 #endif
@@ -50,6 +50,9 @@ int isascii(int c)
 {
     return !(c&~0x7f);
 }
+
+struct _update_struct update_info;
+int update_current_index = 0;
 
 #define isascii(a) (0 ? isascii(a) : (unsigned)(a) < 128)
 extern std::vector<std::string> ITEMZ_SETTING_TEXT;
@@ -108,7 +111,7 @@ static GLuint rdisc_tex;
 
 extern ThreadSafeVector<item_t> all_apps;
 
-VertexBuffer cover_o, cover_t, cover_i, title_vbo, rdisc_i, trainer_btns, launch_text, as_text, remove_music, app_home_refresh, favs;
+VertexBuffer cover_o, cover_t, cover_i, title_vbo, rdisc_i, trainer_btns, launch_text, as_text, remove_music, app_home_refresh, favs, upload_logs_text, stop_daemon;
 double rdisc_rz = 0.;
 std::atomic_int inserted_disc(0);
 
@@ -267,10 +270,10 @@ void rescan_for_apps(multi_select_options::Sort_Multi_Sel op, Sort_Category cat 
 void refresh_apps_for_cf(multi_select_options::Sort_Multi_Sel op, Sort_Category cat ){
     rescan_for_apps(op, cat);
     // load textures of new apps
-    for (int i = 1; i < all_apps[0].count.token_c + 1; i++)
+    for (auto item : all_apps)
     {
-        check_tex_for_reload(i);
-        check_n_load_textures(i);
+        check_tex_for_reload(item);
+        check_n_load_textures(item);
     }
     log_info("Done reloading # of App: %i", all_apps[0].count.token_c);
 }
@@ -335,6 +338,10 @@ void rescan_for_apps(multi_select_options::Sort_Multi_Sel op, Sort_Category cat 
 
 void itemzcore_add_text(VertexBuffer &vert_buffer, float x, float y, std::string text)
 {
+    if(vert_buffer.empty()){
+        log_debug("VBO is empty");
+        return;
+    }
     vec2 pen_s = (vec2){0., 0.};
     pen_s.x = x;
     pen_s.y = y;
@@ -585,37 +592,37 @@ void drop_some_coverbox(void)
         log_info("%s discarded %d textures", __FUNCTION__, count);
 }
 
-void check_tex_for_reload(int idx)
+void check_tex_for_reload(item_t & item)
 {
     std::string cb_path;
     //std::lock_guard<std::mutex> lock(disc_lock);
     int w, h;
-    cb_path = fmt::format("{}/{}.png", APP_PATH("covers"), all_apps[idx].info.id);
+    cb_path = fmt::format("{}/{}.png", APP_PATH("covers"), item.info.id);
 
     if (!if_exists(cb_path.c_str()) || !is_png_vaild(cb_path.c_str(), &w, &h))
     {
        // log_info("%s doesnt exist", cb_path.c_str());
-        all_apps[idx].icon.cover_exists = false;
+        item.icon.cover_exists = false;
     }
     else
-        all_apps[idx].icon.cover_exists = true;
+        item.icon.cover_exists = true;
 }
 
-void check_n_load_textures(int idx)
+void check_n_load_textures(item_t & item)
 {
   //  std::lock_guard<std::mutex> lock(disc_lock);
-    if (all_apps[idx].icon.texture.load() == GL_NULL)
+    if (item.icon.texture.load() == GL_NULL)
     {
         //log_info("%s: %s", __FUNCTION__, all_apps[idx].info.id.c_str());
-        std::string cb_path = fmt::format("{}/{}.png", APP_PATH("covers"), all_apps[idx].info.id);
-        if (all_apps[idx].icon.cover_exists.load()){
+        std::string cb_path = fmt::format("{}/{}.png", APP_PATH("covers"), item.info.id);
+        if (item.icon.cover_exists.load()){
            // log_info("loading cover");
-            all_apps[idx].icon.image_data.data = load_png_asset(cb_path.c_str(), all_apps[idx].icon.turn_into_texture, all_apps[idx].icon.image_data);
+            item.icon.image_data.data = load_png_asset(cb_path.c_str(), item.icon.turn_into_texture, item.icon.image_data);
         }
         else // load icon0 if cover doesnt exist
         {
            // log_info("Loading data for %s", all_apps[idx].info.picpath.c_str());
-            all_apps[idx].icon.image_data.data = load_png_asset(all_apps[idx].info.picpath.c_str(), all_apps[idx].icon.turn_into_texture, all_apps[idx].icon.image_data);
+            item.icon.image_data.data = load_png_asset(item.info.picpath.c_str(), item.icon.turn_into_texture, item.icon.image_data);
            // log_info("Done loading data for %s", all_apps[idx].info.picpath.c_str());
         }
     }
@@ -719,60 +726,54 @@ void itemzCore_Launch_util(layout_t &  l) {
 
 #if defined(__ORBIS__)
 
-static int download_texture(int idx)
-{
-    std::lock_guard<std::mutex> lock(disc_lock);
-    if (idx)
-    {
-        std::string cb_path = fmt::format("{}/{}.png", APP_PATH("covers"), all_apps[idx].info.id);
+static int download_texture(item_t & it) {
 
-        log_info("Trying to Download cover for %s", all_apps[idx].info.id.c_str());
+  std::string cb_path = fmt::format("{}/{}.png", APP_PATH("covers"), it.info.id);
 
-        loadmsg(getLangSTR(LANG_STR::DL_COVERS));
-        int w, h = 0;
-        if (!if_exists(cb_path.c_str()) || !is_png_vaild(cb_path.c_str(), &w, &h)) // download
-        {
-           all_apps[idx].icon.cover_exists = false;
-            std::string cb_url = fmt::format("https://api.pkg-zone.com/download?cover_tid={}", all_apps[idx].info.id);
+  log_info("Trying to Download cover for %s", it.info.id.c_str());
 
-            int ret = dl_from_url(cb_url.c_str(), cb_path.c_str());
-            if (ret != 0) {
-                log_warn("dl_from_url for %s failed with %i", all_apps[idx].info.id.c_str(), ret);
-                return ret;
-            }
-            else if (ret == 0)
-               all_apps[idx].icon.cover_exists = true;
-        }
-        else
-           all_apps[idx].icon.cover_exists = true;
-    }
+  //loadmsg(getLangSTR(LANG_STR::DL_COVERS));
+  int w, h = 0;
+  if (!if_exists(cb_path.c_str()) || !is_png_vaild(cb_path.c_str(), & w, & h)) // download
+  {
+    it.icon.cover_exists = false;
+    std::string cb_url = fmt::format("https://api.pkg-zone.com/download?cover_tid={}", it.info.id);
 
-    return ITEMZCORE_SUCCESS;
+    int ret = dl_from_url(cb_url.c_str(), cb_path.c_str());
+    if (ret != 0) {
+      log_warn("dl_from_url for %s failed with %i", it.info.id.c_str(), ret);
+      return ret;
+    } else if (ret == 0)
+      it.icon.cover_exists = true;
+  } else
+    it.icon.cover_exists = true;
+
+  return ITEMZCORE_SUCCESS;
 }
 
 #endif
 
-static void check_n_draw_textures(int idx, int SH_type, vec4 col)
+static void check_n_draw_textures(item_t & item, int SH_type, vec4 col)
 {
 
 //    std::lock_guard<std::mutex> lock(disc_lock);
-    if(all_apps[idx].icon.turn_into_texture.load()){
+    if(item.icon.turn_into_texture.load()){
         //log_info("Loadding ....");
-       load_png_cover_data_into_texture(all_apps[idx].icon.image_data, all_apps[idx].icon.turn_into_texture, all_apps[idx].icon.texture);
+       load_png_cover_data_into_texture(item.icon.image_data, item.icon.turn_into_texture, item.icon.texture);
     }  
 
-    if (!all_apps[idx].icon.cover_exists) // craft a coverbox stretching the icon0
+    if (!item.icon.cover_exists) // craft a coverbox stretching the icon0
     {
         cover_t.render_tex(cb_tex, SH_type, col);
 
-        if (all_apps[idx].icon.texture.load() == GL_NULL)
+        if (item.icon.texture.load() == GL_NULL)
             cover_i.render_tex(fallback_t, SH_type, col);
 
         // overlayed stretched icon0
-        cover_i.render_tex(all_apps[idx].icon.texture.load(), SH_type, col);
+        cover_i.render_tex(item.icon.texture.load(), SH_type, col);
     }
     else // available cover box texture
-        cover_t.render_tex(all_apps[idx].icon.texture.load(), SH_type, col);
+        cover_t.render_tex(item.icon.texture.load(), SH_type, col);
 }
 
 static void send_cf_action(int plus_or_minus_one, int type)
@@ -932,26 +933,6 @@ int FS_GP_Callback(std::string filename, std::string fullpath)
         else
             ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::ICON_CHANGE_FAILED), getLangSTR(LANG_STR::PNG_NOT_VAILD));
         // log_info("w: %i h: %i", h, w);
-        break;
-    }
-    case cf_ops::REG_OPTS::GAME_SAVE:
-    {
-#if defined(__ORBIS__)
-        std::vector<std::string> save_list;
-        if(is_save_folder(fullpath))
-           SaveData_Operations(RESTORE_GAME_SAVE, all_apps[g_idx].info.id, fullpath);
-        else {
-            if(is_nested_saves_recursive(fullpath, save_list)){
-                for(auto &save_path : save_list){
-                    log_info("[*] Running bulk save cmd: curr save_path: %s", save_path.c_str());
-                    SaveData_Operations(RESTORE_GAME_SAVE, all_apps[g_idx].info.id, save_path);
-                }
-            }
-            else
-                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_SAVES), getLangSTR(LANG_STR::CANT_FIND_SAVE));
-        }
-        save_list.clear();
-#endif
         break;
     }
     default:
@@ -1309,10 +1290,10 @@ static void X_action_settings(int action, layout_t & l)
                 
                 loadmsg(getLangSTR(LANG_STR::DOWNLOADING_COVERS));
                 log_info("Downloading covers...");
-                for (int i = 1; i < all_apps[0].count.token_c + 1; i++){
-                     int ret = download_texture(i);
+                for (auto item: all_apps){
+                     int ret = download_texture(item);
                      if(ret != 0 && ret != 404){
-                        log_error("Failed to download cover for %s", all_apps[i].info.name.c_str());
+                        log_error("Failed to download cover for %s", item.info.name.c_str());
                         sceMsgDialogTerminate();
                         ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_TO_DOWNLOAD_COVER), fmt::format("{0:d}", ret));
                         goto tex_err;
@@ -1385,7 +1366,6 @@ void printDirContentRecursively(const std::filesystem::path& path, const std::st
        log_error("UNKNOWN FS ERROR");
     }
 }
-
 void Start_Dump(std::string name, std::string path, multi_select_options::Dump_Multi_Sels opt) {
   #if defined(__ORBIS__)
 
@@ -1398,9 +1378,9 @@ void Start_Dump(std::string name, std::string path, multi_select_options::Dump_M
   }
 
   if (if_exists(path.c_str())) {
-    if (check_free_space(path.c_str()) >= app_inst_util_get_size(all_apps[g_idx].info.id.c_str())) {
+    if (check_free_space(path.c_str()) >= app_inst_util_get_size(title_id.get().c_str())) {
       if (opt == SEL_FPKG) {
-        tmp = fmt::format("{}/{}.pkg", path, all_apps[g_idx].info.id);
+        tmp = fmt::format("{}/{}.pkg", path, title_id.get());
 
         if (copyFile(all_apps[g_idx].info.package, tmp, true))
           ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::FPKG_COPY_SUCCESS), "");
@@ -1408,94 +1388,29 @@ void Start_Dump(std::string name, std::string path, multi_select_options::Dump_M
           ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FPKG_COPY_FAILED), "");
 
         return;
-      } else if (opt == SEL_GAME_PATCH) {
-        tmp = fmt::format("/user/patch/{}/patch.pkg", all_apps[g_idx].info.id);
-        if (!if_exists(tmp.c_str())) {
-          ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_PATCH_AVAIL), "");
-          return;
-        }
-   } else if (opt == SEL_DLC) {
-    int vaild_dlcs = 0;
-    int avail_dlcs = 0;
-    std::vector<std::tuple<std::string, std::string, std::string>> dlc_info = query_dlc_database(title_id.get());
-    //print out dlc_info
-    for (const auto& result: dlc_info) {
-      std::cout << "PKG: " << std::get<0>(result) << " | DLC Name: " << std::get<1>(result) << " | Full Content ID: " << std::get<2>(result) << std::endl;
-    }
-     
-    std::string addcont_path_str;
-    std::string user_addcont_dir = "/user/addcont/" + title_id.get();
-    std::string ext_addcont_dir = "/mnt/ext0/user/addcont/" + title_id.get();
-    std::string disc_addcont_dir = "/mnt/disc/addcont/" + title_id.get();
+      } 
+      else if (opt == SEL_GAME_PATCH) {
 
-    if(if_exists(user_addcont_dir.c_str())){
-        addcont_path_str = user_addcont_dir;
-    }
-    else if(if_exists(ext_addcont_dir.c_str())){
-        addcont_path_str = ext_addcont_dir;
-    }
-    else {
-        addcont_path_str = disc_addcont_dir;
-    }
-    //printDirContentRecursively("/mnt/sandbox/pfsmnt/");
-    //printDirContentRecursively("/user/addcont/");
-    ///addcont_path /= title_id.get();
+           if (!does_patch_exist(title_id.get())) {
+               ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_PATCH_AVAIL), "");
+               return;
+            }
 
-    std::vector<std::string> unloaded_dlcs;
-    std::vector<std::string> loaded_dlcs;
+      } 
+      else if (opt == SEL_DLC) {
 
-    for (const auto& result: dlc_info) {
-      std::filesystem::path pkg_path(addcont_path_str + "/" + std::get<0>(result));
-      if (std::filesystem::is_directory(pkg_path)) {
-        pkg_path /= "ac.pkg";
-        if (std::filesystem::exists(pkg_path) && std::filesystem::is_regular_file(pkg_path)) {
-          // Construct path to pfs_image.dat file
-          avail_dlcs++;
-          if(file_size(pkg_path.c_str()) < MB(5)){
-            log_debug("AC PKG is likly just a license");
-            vaild_dlcs++;
-            loaded_dlcs.push_back(std::get<1>(result));
-            continue;
-          }
-          std::filesystem::path pfs_path("/mnt/sandbox/pfsmnt/");
-          std::string full_content_id = std::get<2>(result);
-          pfs_path /= full_content_id + "-ac-nest"; // Use stem to get filename without extension
-          pfs_path /= "pfs_image.dat";
-
-          if (std::filesystem::exists(pfs_path) && std::filesystem::is_regular_file(pfs_path)) {
-            log_info("Found pfs at %s | full_content_id %s | pkg %s ", pfs_path.string().c_str(), full_content_id.c_str(), pkg_path.string().c_str());
-            log_info("DLC Name: %s", std::get<1>(result).c_str());
-            vaild_dlcs++;
-            loaded_dlcs.push_back(std::get<1>(result));
-          } else {
-            unloaded_dlcs.push_back(std::get<1>(result));
-            log_error("PFS file not found");
-          }
-        }
-      } else {
-        log_error("Path does not exist or is not a directory: %s", addcont_path_str.c_str());
-        ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
+            int vaild_dlcs = 0, avail_dlcs = 0;
+            if(!count_dlc(title_id.get(), vaild_dlcs, avail_dlcs, true )){
+               ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_DLC_AVAIL), "");
+               return;
+            }
       }
-    }
-
-    if (avail_dlcs == 0) {
-      ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
-      return;
-    }
-
-    if (vaild_dlcs < avail_dlcs) {
-      std::string unloaded_dlcs_str = fmt::format("Unloaded DLCs: {}\n{}", unloaded_dlcs.size(), fmt::join(unloaded_dlcs, "\n"));
-      std::string loaded_dlcs_str = fmt::format("Loaded DLCs: {}\n{}", loaded_dlcs.size(), fmt::join(loaded_dlcs, "\n"));
-      if (Confirmation_Msg(fmt::format("Not all available DLC is loaded by the game and cannot be dumped do you want to continue?\n\nAvailable DLCs: {}\n{}\n{}", avail_dlcs, loaded_dlcs_str, unloaded_dlcs_str)) == NO)
-        return;
-    }
-}
       log_info("Enough free space");
       log_info("Setting dump flag to: %i", opt);
       dump = opt;
       if (app_status != RESUMABLE) {
         //auto close app before doing a crit suspend
-        IPC_Client& ipc = IPC_Client::getInstance();
+        IPC_Client & ipc = IPC_Client::getInstance();
 
         Kill_BigApp(app_status);
         if (opt != SEL_DLC && (ret = ipc.IPCSendCommand(IPC_Commands::CRITICAL_SUSPEND, ipc_msg) != IPC_Ret::NO_ERROR)) {
@@ -1581,7 +1496,6 @@ X_action_dispatch(int action, layout_t & l)
     {
     // ALL THE 3 MULTI SELS
     case cf_ops::REG_OPTS::MOVE_APPS:
-    case cf_ops::REG_OPTS::GAME_SAVE:
     case cf_ops::REG_OPTS::UNINSTALL:
     case cf_ops::REG_OPTS::RESTORE_APPS:
     {
@@ -1592,19 +1506,6 @@ X_action_dispatch(int action, layout_t & l)
             {
                 switch (l.curr_item)
                 {
-                case cf_ops::REG_OPTS::GAME_SAVE:{
-#if defined(__ORBIS__)
-                    if (!gm_save.is_loaded){
-                        StartFileBrowser((view_t)v_curr, setting_p, FS_GP_Callback, FS_FOLDER);
-                    }
-                    else if (l.item_d[l.curr_item].multi_sel.pos.y == RESTORE_GAME_SAVE){
-                        StartFileBrowser((view_t)v_curr, setting_p, FS_GP_Callback, FS_FOLDER);
-                    }
-                    else
-                        SaveData_Operations((SAVE_Multi_Sel)l.item_d[l.curr_item].multi_sel.pos.y, all_apps[g_idx].info.id, "");
-#endif
-                 break;
-                }
                 case cf_ops::REG_OPTS::MOVE_APPS:
                 {
 #if defined(__ORBIS__)
@@ -1856,6 +1757,54 @@ X_action_dispatch(int action, layout_t & l)
         itemzCore_Launch_util(l);
         break;
     }
+    case cf_ops::REG_OPTS::RETAIL_UPDATES: {
+      // #if defined(__ORBIS__)
+      log_info("getting details");
+      bool con_issue = false;
+#if defined(__ORBIS__)
+      if (all_apps[g_idx].flags.is_fpkg) {
+        //msgok(SG_DIALOG:: ,"This feature is only for retail games");
+        ani_notify(NOTIFI::ERROR, getLangSTR(LANG_STR::FEATURE_DOES_NOT_SUPPORT_FPKGS), "The Selected Game is an FPKG");
+        log_info("This feature is only for retail games");
+        break;
+      }
+#endif
+      loadmsg( skipped_first_X ? getLangSTR(LANG_STR::STARTING_DOWNLOAD) : getLangSTR(LANG_STR::FETCHING_UPDATES) );
+      if (!skipped_first_X && !Fetch_Update_Details(title_id.get(), all_apps[g_idx].info.name, update_info, con_issue)) {
+        ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::NO_PATCHES_FOUND), con_issue ? getLangSTR(LANG_STR::PATCH_CON_FAILED) : getLangSTR(LANG_STR::NO_PATCHES_FOR_GAME));
+        skipped_first_X = false;
+        sceMsgDialogTerminate();
+        break;
+      }
+
+
+      if (l.item_d[l.curr_item].multi_sel.is_active) {
+        if (skipped_first_X) {
+          skipped_first_X = false;
+         // log_info("url: %s, ver: %s", update_info.update_json[update_current_index].c_str(), update_info.update_version[update_current_index].c_str());
+          if(installPatchPKG(update_info.update_json[update_current_index].c_str(), title_id.get().c_str(), all_apps[g_idx].info.picpath.c_str()) == 0){
+            ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::PATCH_QUEUED), getLangSTR(LANG_STR::PATCH_ADD_TO_DOWNLOADS));
+          } else {
+            ani_notify(NOTIFI::ERROR, getLangSTR(LANG_STR::PATCH_QUEUE_ISSUE), "");
+          }
+          //break;
+        } else  {
+          skipped_first_X = true;
+        }
+      }
+      // suck me
+      if (l.item_d[l.curr_item].multi_sel.pos.x == update_info.update_version.size()) {
+        l.item_d[l.curr_item].multi_sel.pos.x = 0;
+      } else if (l.item_d[l.curr_item].multi_sel.pos.x == 0) {
+        l.item_d[l.curr_item].multi_sel.pos.x++;
+      } else {
+        l.item_d[l.curr_item].multi_sel.pos.x--;
+      }
+
+       sceMsgDialogTerminate();
+        // #endif
+        break;
+      }
     case cf_ops::REG_OPTS::TRAINERS:
     {
 #if defined(__ORBIS__)
@@ -2035,21 +1984,29 @@ static void item_page_Square_action(layout_t & l)
         return;
     }
 #endif
-    Favorites favorites;
-    if(favorites.loadFromFile(APP_PATH("favorites.dat")))
-       log_info("Favorites have beend loaded!");
-    else
-       log_warn("Failed to load favorites.dat does it exist??");
+   Favorites favorites;
+   if(favorites.loadFromFile(APP_PATH("favorites.dat")))
+      log_info("Favorites have beend loaded!");
+   else
+      log_warn("Failed to load favorites.dat does it exist??");
 
 
-    all_apps[g_idx].flags.is_favorite ? favorites.removeFavorite(all_apps[g_idx].info.id) : favorites.addFavorite(all_apps[g_idx].info.id);
-    all_apps[g_idx].flags.is_favorite = !all_apps[g_idx].flags.is_favorite;
+   all_apps[g_idx].flags.is_favorite ? favorites.removeFavorite(all_apps[g_idx].info.id) : favorites.addFavorite(all_apps[g_idx].info.id);
+   all_apps[g_idx].flags.is_favorite = all_apps[g_idx].flags.is_favorite ? false : true;
 
-    favs.clear();
+   favs.clear();
 
-    favorites.saveToFile(APP_PATH("favorites.dat"));
+   favorites.saveToFile(APP_PATH("favorites.dat"));
 
-    ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::FAVORITES), all_apps[g_idx].flags.is_favorite ? getLangSTR(LANG_STR::FAVORITES_ADD) : getLangSTR(LANG_STR::FAVORITES_REMOVED));
+   //fw_action_to_cf(CIR);
+   //refresh_apps_for_cf(get->sort_by, get->sort_cat);
+   if (get->sort_cat == FILTER_FAVORITES) {
+       fw_action_to_cf(CIR);
+       refresh_apps_for_cf(get->sort_by, get->sort_cat);
+   }
+
+
+   ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::FAVORITES), all_apps[g_idx].flags.is_favorite ? getLangSTR(LANG_STR::FAVORITES_ADD) : getLangSTR(LANG_STR::FAVORITES_REMOVED));
 
     return;
 }
@@ -2091,7 +2048,7 @@ static void item_page_O_action(layout_t & l)
         case cf_ops::REG_OPTS::UNINSTALL: get->un_opt = multi_select_options::UNINSTALL_GAME;
         case cf_ops::REG_OPTS::TRAINERS:
         case cf_ops::REG_OPTS::DUMP_GAME: get->Dump_opt = multi_select_options::SEL_DUMP_ALL;
-        case cf_ops::REG_OPTS::GAME_SAVE:
+        case cf_ops::REG_OPTS::RETAIL_UPDATES:
         case cf_ops::REG_OPTS::LAUNCH_GAME:
         case cf_ops::REG_OPTS::RESTORE_APPS:
         case cf_ops::REG_OPTS::MOVE_APPS:
@@ -2126,8 +2083,17 @@ multi_back:
     trs.patcher_note.clear();
     trs.patcher_enablement.clear();
     trs.controls_text.clear();
+
     patch_current_index = 0;
 #endif
+
+    update_info.update_title.clear();
+    update_info.update_tid.clear();
+    update_info.update_version.clear();
+    update_info.update_size.clear();
+    update_info.update_json.clear();
+    update_current_index = 0;
+
     l.vbo_s = ASK_REFRESH;
     skipped_first_X = false;
 }
@@ -2461,7 +2427,15 @@ back_05905:
 
         case TRI:
         {
-            ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OPT_NOT_PERMITTED), "");
+#ifdef __ORBIS__
+          if (Confirmation_Msg(getLangSTR(LANG_STR::UPLOAD_LOGS)) == YES) {
+
+              upload_crash_log(false);
+            }
+            else{
+                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OP_CANNED), "");
+            }
+#endif
             break; // goto back_to_Store;
         }
         }
@@ -2513,41 +2487,7 @@ void draw_additions(view_t vt)
         {
             if (btn_X && btn_options && btn_tri && btn_o)
             {
-#if 0
-int o = 0;
-int max_count = std::max(g_idx + 3, 7);
-std::array<bool, 9> fav_list{false};
-if(max_count == 7)
-   max_count = 8;
-for (int i = (max_count-7 == 0) ? 1 : max_count - 7; i <= max_count; ++i) {
-    if (i >= all_apps.size()) {
-        for (int j = 1; j < 3; ++j) {
-            log_info("o %i j: %i as: %i", o, j, all_apps.size());
-            fav_list[o] = all_apps[j].flags.is_favorite;
-            log_debug("fav_list[%i] = %i %i (%i)", o, fav_list[o], all_apps[j].flags.is_favorite, j);
-            if(o == 7) {
-                break;
-            }
-            o++;
-        }
-        break;
-    }
-    log_info("i %i all_apps size: %i", i, all_apps.size());
-    fav_list[o] = all_apps[i].flags.is_favorite;
-    if (i == g_idx) center_cover = o;
-    log_debug("fav_list[%i] = %i %i (%i) %s", o, fav_list[o], all_apps[i].flags.is_favorite, i, (i == g_idx) ? "< = CENTER" : "");
-    if(o == 7) break;
-    o++;
-}
 
-if (heart_icon && !ani[0].is_running) {
-    for (const auto& pos : heart_icon_positions) {
-        if (center_cover + pos.offset  <= fav_list.size() &&  fav_list[center_cover + pos.offset]) {
-            render_button(heart_icon, 64, 64, pos.x, pos.y, 1.1);
-        }
-    }
-}
-#endif
                 vec4 r;
                 vec2
                     s = (vec2)(68),
@@ -2570,7 +2510,7 @@ if (heart_icon && !ani[0].is_running) {
                     render_button(btn_l2, 45., 50., 1390., 160., 1.1);
             }
         }
-   else if (vt == ITEM_PAGE || vt == ITEM_SETTINGS)
+        else if (vt == ITEM_PAGE || vt == ITEM_SETTINGS)
         {
 
             if (btn_X && btn_up && btn_down && btn_left
@@ -2589,6 +2529,8 @@ if (heart_icon && !ani[0].is_running) {
                     
                     as_text.clear();
                     remove_music.clear();
+                    stop_daemon.clear();
+                    upload_logs_text.clear();
 
                     
                     as_text = VertexBuffer("vertex:3f,tex_coord:2f,color:4f");
@@ -2601,15 +2543,23 @@ if (heart_icon && !ani[0].is_running) {
                         itemzcore_add_text(remove_music, 560., 80., getLangSTR(LANG_STR::DISABLE_MUSIC));
 
                     }
-                    #ifdef __ORBIS__
+#ifdef __ORBIS__
                     else if (is_connected_app && numb_of_settings != NUMBER_OF_SETTINGS){
-                    #else
+#else
                     else if (numb_of_settings != NUMBER_OF_SETTINGS){
-                    #endif
-                        remove_music = VertexBuffer("vertex:3f,tex_coord:2f,color:4f");
+#endif                  
+                        stop_daemon = VertexBuffer("vertex:3f,tex_coord:2f,color:4f");
                         render_button(btn_sq, 67., 68., 500., 55., 1.1);
-                        itemzcore_add_text(remove_music, 560., 80., getLangSTR(LANG_STR::SHUTDOWN_DAEMON));
-                        remove_music.render_vbo(NULL);
+                        itemzcore_add_text(stop_daemon, 560., 80., getLangSTR(LANG_STR::SHUTDOWN_DAEMON));
+                        stop_daemon.render_vbo(NULL);
+                    }
+                    else if(setting_p.curr_item != BACKGROUND_MP3_OPTION && !get->setting_strings[MP3_PATH].empty()){
+                    
+                        // upload crash log option
+                        upload_logs_text = VertexBuffer("vertex:3f,tex_coord:2f,color:4f");
+                        render_button(btn_tri, 67., 68., 500., 55., 1.1);
+                        itemzcore_add_text(upload_logs_text, 560., 80., getLangSTR(LANG_STR::UPLOAD_LOGS));
+                        upload_logs_text.render_vbo(NULL);
                     }
                     
                     itemzcore_add_text(as_text, 580., 25., (numb_of_settings == NUMBER_OF_SETTINGS) ? getLangSTR(LANG_STR::ADVANCED_SETTINGS) : getLangSTR(LANG_STR::HIDE_ADVANCED_SETTINGS));
@@ -2620,6 +2570,7 @@ if (heart_icon && !ani[0].is_running) {
                 if (vt == ITEM_PAGE)
                 { // && is_trainer_page == true
                     render_button(btn_sq, 67., 68., 525., 0., 1.1);
+                    
                     if(ls_p.curr_item != cf_ops::REG_OPTS::TRAINERS){
 
                          if(!favs){
@@ -2719,22 +2670,21 @@ if (heart_icon && !ani[0].is_running) {
     }
 }
 
-#if 0
-static void LoadIconsAsync(int i){
+
+static void LoadIconsAsync(item_t& item){
     uint64_t fmem = 0;
 
-    check_tex_for_reload(i);
+    check_tex_for_reload(item);
     #if defined(__ORBIS__)
     sceKernelAvailableFlexibleMemorySize(&fmem);
     // calc the progress %
     //fill up the available VRAM with PNGs (to reduce loading times) but keep enough to do other things
-    if(fmem < MB(5))
+    if(fmem < MB(40))
         return;
     #endif
 
-    check_n_load_textures(i);
+    check_n_load_textures(item);
 }
-#endif
 
 void DrawScene_4(void)
 {
@@ -2941,16 +2891,22 @@ void DrawScene_4(void)
 
         if (Download_icons)
         {
+           
 
-#if defined(__ORBIS__)
+#if 1
 
                 if (get->setting_bools[cover_message] && Confirmation_Msg(getLangSTR(LANG_STR::DOWNLOAD_COVERS)) == YES)
                 {
                 
                     loadmsg(getLangSTR(LANG_STR::DOWNLOADING_COVERS));
                     log_info("Downloading covers...");
-                    for (int i = 1; i < all_apps[0].count.token_c + 1; i++)
-                        download_texture(i);
+
+                    for (auto item: all_apps){
+                        download_texture(item);
+                    }
+
+                  //  get->setting_bools[cover_message] = false;
+                  //  SaveOptions(get);
 
                     sceMsgDialogTerminate();
                     log_info("Downloaded covers");
@@ -2959,18 +2915,15 @@ void DrawScene_4(void)
                   log_info("Download covers canceled");
             
 #endif
-            #if 0
-                Timer timer;  
-                std::vector<std::future<void>> m_future;
+#if 1
                 int i = 0;
                 #if defined(__ORBIS__)
                 progstart("Pre-loading Covers...");
                 #endif
                 for (item_t &item : all_apps)
                 {
-                   // m_future.push_back(std::async(std::launch::async, LoadIconsAsync, i));
-                     LoadIconsAsync(i);
-                     check_n_draw_textures(tex_idx, +1, colo);
+                    LoadIconsAsync(item);
+                    check_n_draw_textures(item, +1, colo);
 
                     if(item.info.id.empty())
                        log_error("wtf");
@@ -2980,7 +2933,7 @@ void DrawScene_4(void)
                     i++;
                 }
                 sceMsgDialogTerminate();
-            #endif
+#endif
 
             log_info("all_apps[0].count.token_c: %i", all_apps[0].count.token_c);
             Download_icons = false;
@@ -2990,9 +2943,9 @@ void DrawScene_4(void)
         // rdisc_i
         mat4 rdisc_model_main;
         // load textures (once)
-        check_n_load_textures(tex_idx);
+        check_n_load_textures(all_apps[tex_idx]);
         // draw coverbox, if not avail craft coverbox from icon
-        check_n_draw_textures(tex_idx, +1, colo);
+        check_n_draw_textures(all_apps[tex_idx], +1, colo);
         // log_info("000000000000");
         
         //log_info("tex_idx: %d, inserted_disc.load() %i", tex_idx, inserted_disc.load());
@@ -3056,7 +3009,7 @@ void DrawScene_4(void)
             glUseProgram(0);
 
             // draw coverbox reflection, if not avail craft coverbox from icon
-            check_n_draw_textures(tex_idx, -1, colo);
+            check_n_draw_textures(all_apps[tex_idx], -1, colo);
             if (tex_idx == inserted_disc.load())
             {
                 // fill blue, (shader 1 don't use)
@@ -3175,6 +3128,7 @@ void DrawScene_4(void)
                      tmpstr = getLangSTR(LANG_STR::VAPP_MENU);
                      mins_played = MIN_STATUS_SEEN;
                 } 
+                log_info("str: %s", tmpstr.c_str());
                 itemzcore_add_text(title_vbo,100., 920., tmpstr);
             }
             else if (v_curr == ITEMzFLOW)

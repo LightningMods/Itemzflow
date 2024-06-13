@@ -132,7 +132,7 @@ std::string getLangSTR(LANG_STR::LANG_STRINGS str)
 {
     if (lang_is_initialized)
     {
-        if (str > LANG_NUM_OF_STRINGS)
+        if (str > LANG_NUM_OF_STRINGS || stropts[lang_key[str]].empty() )
         {
             return stropts[lang_key[STR_NOT_FOUND]];
         }
@@ -183,7 +183,7 @@ void fill_menu_text()
     gm_p_text[0] = fmt::format("{0:.20}", getLangSTR(LANG_STR::LAUNCH_GAME));
     gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(LANG_STR::DUMP_1));
     gm_p_text[2] = fmt::format("{0:.20}", getLangSTR(LANG_STR::UNINSTALL));
-    gm_p_text[3] = fmt::format("{0:.20}", getLangSTR(LANG_STR::GAME_SAVE));
+    gm_p_text[3] = fmt::format("{0:.20}", getLangSTR(LANG_STR::RETAIL_UPDATES));
     gm_p_text[4] = fmt::format("{0:.20}", getLangSTR(LANG_STR::TRAINERS));
     gm_p_text[5] = fmt::format("{0:.20}", getLangSTR(LANG_STR::HIDE_APP_OPT));
     gm_p_text[6] = fmt::format("{0:.20}", getLangSTR(LANG_STR::CHANGE_ICON));

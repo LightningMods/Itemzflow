@@ -941,6 +941,7 @@ int initialize_userland_fuse(const char* mp, const char* ip)
 	args.is_debug_mode = fuse_debug_flag;
 
 	unlink("/data/itemzflow_daemon/libfuse.log");
+	log_info("calling fuse_nfs_main");
 	fuse_ret = fuse_nfs_main(args);
 	log_info("fuse: fuse_main returned %d", fuse_ret);
 	return fuse_ret;

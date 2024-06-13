@@ -31,6 +31,9 @@
 #define GL_NULL 0
 #define FM_ENTRIES (10) // max num we split bound_box Height, in px
 
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 05
+
 
 #if defined (__ORBIS__)
 
@@ -154,8 +157,6 @@
 #define FALSE 0
 
 
-#define VERSION_MAJOR 1
-#define VERSION_MINOR 04
 
 #define BUILD_YEAR_CH0 (__DATE__[ 7])
 #define BUILD_YEAR_CH1 (__DATE__[ 8])
@@ -257,7 +258,6 @@
 /// for icons.c, sprite.c
 #define NUM_OF_TEXTURES  (8)
 #define NUM_OF_SPRITES   (6)
-#define ITEMZ_LOG "/user/app/ITEM00001/logs/itemzflow_app.log"
 /// from GLES2_rects.c
 
 typedef struct sfo_context_s sfo_context_t;

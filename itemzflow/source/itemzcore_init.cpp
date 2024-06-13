@@ -308,8 +308,10 @@ bool init_daemon_services(bool redirect) {
 
         if (error == IPC_Ret::NO_ERROR) {
             sceMsgDialogTerminate();
-            log_debug(" Took the Daemon %i extra commands attempts to respond", wait);
+            log_debug(" Took the Daemon %i extra commands attempts to respond, setting", wait);
             is_connected_app = true;  // You should declare and define 'is_connected_app' somewhere
+            log_debug("Daemon is connected");
+            break;
         }
 
         if (wait >= 60)
@@ -321,10 +323,11 @@ bool init_daemon_services(bool redirect) {
         // File Flag the Daemon creates when initialization is complete
         // and the Daemon IPC server is active
     } while (error == IPC_Ret::INVALID);
-
+    log_debug("[ItemzDaemon] ????? Status: %s", error == IPC_Ret::INVALID ? "Failed to Connect" : "Success");
     sceMsgDialogTerminate();
 
     if (is_connected_app) {  // You should declare and define 'is_connected_app' somewhere
+        log_debug("Daemon is connected");
         if (redirect) {  // is setting get->HomeMenu_Redirection enabled
             log_info("Redirect on with app connected");
 
@@ -337,6 +340,7 @@ bool init_daemon_services(bool redirect) {
             }
         }
     } else {
+        log_debug("Daemon is not connected");
         return false;
     }
 
@@ -464,8 +468,10 @@ int Start_IF_internal_Services(const char* launch_q)
         launch_update_thread();
         log_info("Update Thread Launched");
     }
-    else
+    else{
         log_info("CURL INIT Failed");
+        return false;
+    }
     
 #ifndef HAVE_SHADER_COMPILER
     if((ret = sceKernelLoadStartModule("/system/common/lib/libScePigletv2VSH.sprx", 0, NULL, 0, NULL, NULL)) >= PS4_OK)
@@ -522,5 +528,6 @@ int Start_IF_internal_Services(const char* launch_q)
         msgok(MSG_DIALOG::NORMAL, "If you would like to see future itemzflow updates consider supporting the project on ko-fi @ https://ko-fi.com/lightningmods");
     }
     // all fine.
+    log_debug("Itemzflow Initiated Successfully");
     return PS4_OK;
 }

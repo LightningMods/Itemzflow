@@ -6,7 +6,7 @@
 #include "sfo.hpp"
 #include "dump.hpp"
 #include "pugixml.hpp"
-
+#include <lang.h>
 #include <algorithm>
 #include <cstring>
 // #include <ctime> // TODO: Not including doesn't generate and error even though "strftime" is used?
@@ -25,6 +25,8 @@
 #include <iomanip>
 #include <sstream>
 #include <sys/stat.h>
+int progstart(const char* format, ...);
+int Confirmation_Msg(std::string msg);
 
 namespace gp4 {
 
@@ -203,7 +205,9 @@ pugi::xml_document make_files(const std::string &path, bool validation) {
         "sce_sys/app/playgo-manifest.xml",
         "sce_sys/icon0.dds",
         "sce_sys/pic0.dds",
-        "sce_sys/pic1.dds"
+        "sce_sys/pic1.dds",
+        "sce_discmap.plt",
+        "sce_discmap_patch.plt",
     };
     for (auto &&f : skip_files) {
       std::stringstream ss_encrypted;
@@ -363,8 +367,18 @@ void write(const pugi::xml_document& xml, const std::string& path) {
     output_file.close();
 }
 
-void generate(const std::string& sfo_path, const std::string& output_path, const std::string& gp4_path, std::vector<std::string>& self_files, Dump_Options opt) {
+// TODO: cleanup this func and make it use the struct 
+void generate(const std::string& sfo_path, const std::string& output_path, const std::string& gp4_path, const std::string& title, const std::string& title_id, Dump_Options opt) {
     char buff[100];
+    std::vector<std::string> self_files;
+
+    
+    if(opt != ADDITIONAL_CONTENT_DATA && Confirmation_Msg(getDumperLangSTR(ASK_FOR_GP4)) == NO){
+        log_info("User declined to make GP4");
+        return;
+    }
+    progstart("Generating GP4");
+    ProgUpdate(99,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(CREATING_GP4));  
 
     std::vector<sfo::SfoData> sfo_data = sfo::read(sfo_path); // Flawfinder: ignore
     std::vector<std::string> sfo_keys = sfo::get_keys(sfo_data);

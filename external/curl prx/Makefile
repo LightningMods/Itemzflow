@@ -2,7 +2,7 @@
 # Library metadata.
 TARGET := curl.prx
 # Libraries linked into the ELF.
-LIBS 		 := -lcurl -lpolarssl -lSceNet -lc -lc++ -lkernel
+LIBS 		 := -lcurl -lpolarssl -lSceNet -lc -lc++ -lkernel -lz
 
 # Additional compile flags.
 #EXTRAFLAGS  :=

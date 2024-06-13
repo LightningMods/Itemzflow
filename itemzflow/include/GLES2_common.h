@@ -432,7 +432,7 @@ typedef enum
     LAUNCH_GAME,
     DUMP_GAME,
     UNINSTALL,
-    GAME_SAVE,
+    RETAIL_UPDATES,
     TRAINERS,
     HIDE_APP,
     CHANGE_ICON,
@@ -656,8 +656,8 @@ void ORBIS_RenderFillRects(enum SH_type SL_program, const vec4 &rgba, std::vecto
 void GLES2_DrawFillingRect(std::vector<vec4> &r, vec4 &c,  const double percentage);
     void ORBIS_RenderDrawBox(enum SH_type SL_program, const vec4 &rgba, vec4 &r);
 
-void check_tex_for_reload(int idx);
-void check_n_load_textures(int idx);
+void check_tex_for_reload(item_t& item);
+void check_n_load_textures(item_t& item);
 void InitScene_4(int width, int height);
 void InitScene_5(int width, int height);
 void O_action_dispatch(void);

@@ -19,6 +19,7 @@ enum Lang_ST {
 	PROCESSING,
 	EXT_ADDON,
 	DLC_NAME,
+	ASK_FOR_GP4,
    //DO NOT DELETE THIS, ALWAYS KEEP AT THE BOTTOM
    LANG_NUM_OF_STRINGS
 };
@@ -37,6 +38,7 @@ static const char *lang_key[LANG_NUM_OF_STRINGS] = {
 	"PROCESSING",
 	"EXT_ADDON",
 	"DLC_NAME",
+	"ASK_FOR_GP4",
 };
 
 typedef struct

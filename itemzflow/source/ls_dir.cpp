@@ -415,9 +415,9 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
             if (fname.find("CUSA") != std::string::npos || fname.find("PPSA") != std::string::npos)
                 continue;
         }
-        else if (category == FILTER_GAMES)
+        else if ( category == FILTER_RETAIL_GAMES)
         {
-            if (fname.find("CUSA") == std::string::npos || fname.find("PPSA") == std::string::npos)
+            if (fname.find("CUSA") == std::string::npos && fname.find("PPSA") == std::string::npos)
                 continue;
         }
 
@@ -545,6 +545,7 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
                 std::string key = fmt::format("TITLE_{0:}{1:d}", (z < 10) ? "0" : "", z);
                 item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(key, sfo.GetValueFor<std::string>(key)));
             }
+           // log_info("tid: %s, cat: %s", fname.c_str(), sfo.GetValueFor<std::string>("CATEGORY").c_str());
             // if its a patch just set it to GD
             if (sfo.GetValueFor<std::string>("CATEGORY") == "gp")
                item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gd"));
@@ -556,7 +557,6 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
 
             item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("APP_TYPE", std::to_string(sfo.GetValueFor<int>("APP_TYPE"))));
             item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("APP_VER", sfo.GetValueFor<std::string>("APP_VER")));
-            item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gd"));
             item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("SYSTEM_VER",  std::to_string(sfo.GetValueFor<int>("SYSTEM_VER"))));
             item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("PARENTAL_LEVEL", std::to_string(sfo.GetValueFor<int>("PARENTAL_LEVEL"))));
             item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("DOWNLOAD_DATA_SIZE", std::to_string(sfo.GetValueFor<int>("DOWNLOAD_DATA_SIZE"))));
@@ -573,6 +573,11 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
 
             //log_info("PARENTAL_LEVEL: %i", sfo.GetValueFor<int>("PARENTAL_LEVEL")); 
         }
+        if( (category == FILTER_RETAIL_GAMES || category == FILTER_GAMES) &&  !item.flags.is_dumpable){
+            log_debug("[F3] Filtered out %s, not a dumpable game, LIKELY MEDIA APP", fname.c_str());
+            continue;
+        }
+        //log_info("added %s, cat: %s", fname.c_str(), item.extra_data.extra_sfo_data["CATEGORY"].c_str());
         out_vec.push_back(item);
     }
 
@@ -598,13 +603,14 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
     out_vec[0].count.token_c = out_size;
     log_info("valid count: %d", out_size);
     log_info("token_c: %i : %i", out_vec[0].count.token_c, out_size);
-
-    int cc = 0;
+#if 1
+    int HDD_Count = 0;
     for (auto item : out_vec) {
-        log_info("%d: tid: %s, name %s", cc, item.info.id.c_str(), item.info.name.c_str());
-        cc++;
+       if(!item.flags.is_ext_hdd && !item.flags.is_vapp)
+          HDD_Count++;
     }
-
+#endif
+    out_vec[0].count.HDD_count = HDD_Count;
     cvEntries.clear();
 
 

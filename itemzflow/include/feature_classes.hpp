@@ -9,7 +9,6 @@
 #include <memory>
 #include <freetype-gl.h>  // links against libfreetype-gl
 #include "GLES2_common.h"
-
 void text_gl_extra( vertex_buffer_t* buffer,int num, GLuint texture, int idx, vec4 col, GLuint sh_prog);
 
 class Favorites {
@@ -505,23 +504,45 @@ void clear() {
 };
 
 
-class Timer{
-    public:
-    Timer(){
+class Timer {
+public:
+    Timer() {
         m_StartTimepoint = std::chrono::high_resolution_clock::now();
     }
-    ~Timer(){
+
+    ~Timer() {
         Stop();
     }
 
-    void Stop(){
-         auto end = std::chrono::high_resolution_clock::now();
-         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - m_StartTimepoint);
-         double ms = duration.count()  * 0.001;
+    void Stop() {
+        if (has_stopped)
+            return;
 
-         log_info("took %.2f ms", ms);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - m_StartTimepoint);
+        double ms = duration.count() * 0.001;
+        seconds = ms / 1000.0;
+        minutes = seconds / 60.0;
+
+        log_info("Operation took %.3f ms", ms);  // Log with higher precision
+        has_stopped = true;
+    }
+
+    double GetTotalMinutes() {
+        Stop();
+        return minutes;
+    }
+
+    double GetFractionalMinutes() {
+        Stop();
+        double wholeMinutes;
+        double fractionalMinutes = modf(minutes, &wholeMinutes);
+        return fractionalMinutes * 60.0;  // Convert fractional minutes to seconds for display
     }
 
 private:
-   std::chrono::time_point<std::chrono::high_resolution_clock> m_StartTimepoint;
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_StartTimepoint;
+    double seconds = 0.0;
+    double minutes = 0.0;
+    bool has_stopped = false;
 };

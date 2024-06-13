@@ -56,11 +56,15 @@
     <file targ_path="assets/app_home_host.png" orig_path="assets/app_home_host.png" />
     <file targ_path="langs/0/lang.ini" orig_path="langs/0/lang.ini" />
     <file targ_path="langs/1/lang.ini" orig_path="langs/1/lang.ini" />
+	<file targ_path="langs/2/lang.ini" orig_path="langs/2/lang.ini" />
     <file targ_path="langs/3/lang.ini" orig_path="langs/3/lang.ini" />
     <file targ_path="langs/5/lang.ini" orig_path="langs/5/lang.ini" />
+	<file targ_path="langs/8/lang.ini" orig_path="langs/8/lang.ini" />
     <file targ_path="langs/19/lang.ini" orig_path="langs/19/lang.ini" />
     <file targ_path="langs/25/lang.ini" orig_path="langs/25/lang.ini" />
     <file targ_path="langs/27/lang.ini" orig_path="langs/27/lang.ini" />
+    <file targ_path="langs/10/lang.ini" orig_path="langs/10/lang.ini" />
+    <file targ_path="langs/11/lang.ini" orig_path="langs/11/lang.ini" />
   </files>
   <rootdir>
     <dir targ_name="assets">
@@ -71,9 +75,13 @@
     <dir targ_name="langs">
       <dir targ_name="0" />
       <dir targ_name="1" />
+	  <dir targ_name="2" />
       <dir targ_name="3" />
       <dir targ_name="5" />
+	  <dir targ_name="8" />
       <dir targ_name="19" />
+      <dir targ_name="10" />
+      <dir targ_name="11" />
       <dir targ_name="25" />
       <dir targ_name="27" />
     </dir>

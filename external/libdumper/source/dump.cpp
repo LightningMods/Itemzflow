@@ -63,13 +63,11 @@ bool DecryptAndMakeGP4(const std::string &output_path, const std::string &title_
     }
 
     elf::decrypt_dir(sb_path.string(), output_path, fself);
-
   
-ProgUpdate(99,  getDumperLangSTR(DUMP_INFO) + "\n\n" + getDumperLangSTR(APP_NAME) + ": " + title + "\n" + getDumperLangSTR(TITLE_ID) + " " + title_id + "\n\n" + getDumperLangSTR(CREATING_GP4));  
+
 try {
-    std::vector<std::string> self_files;
-    if (!gp4::generate(sfo_path.string(), output_path, gp4_path.string(), self_files, opt))
-        return false;
+    //void generate(const std::string& sfo_path, const std::string& output_path, const std::string& gp4_path, const std::string& title, const std::string& title_id, std::vector<std::string>& self_files, Dump_Options opt);
+    gp4::generate(sfo_path.string(), output_path, gp4_path.string(), title, title_id, opt);
 }
 catch (const std::exception& e)
 {
@@ -80,10 +78,8 @@ catch (const std::exception& e)
 return true;
 }
     
-bool dump_dlc(const std::string & usb_device, const std::string & title_id) {
+bool dump_dlc(const std::string & dest_path, const std::string & title_id) {
 
-  // Vector of strings for locations of SELF files for decryption
-  std::vector<std::string> self_files;
   bool ac_wo_data = false;
   std::string full_content_id;
 
@@ -115,7 +111,7 @@ bool dump_dlc(const std::string & usb_device, const std::string & title_id) {
 
     ac_wo_data = std::filesystem::file_size(pkg_path) < MB(5);
      
-    std::string out_path = usb_device + "/" + title_id + "-DLC-" + std::get<0>(result);
+    std::string out_path = dest_path + "/" + title_id + "-DLC-" + std::get<0>(result);
     log_info("output directory %s", out_path.c_str());
     if (!std::filesystem::is_directory(out_path) && !std::filesystem::create_directories(out_path)) {
       log_error("Unable to create `out_path` directory");
@@ -170,7 +166,13 @@ bool dump_dlc(const std::string & usb_device, const std::string & title_id) {
   return true;
 }
 
-bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Options opt, const std::string& title) {
+bool __dump(const Dumper_Options& options) {
+
+  // initialize all the variables
+  const std::string dest_path = options.dump_path;
+  const std::string title_id = options.title_id;
+  const std::string title = options.title;
+  Dump_Options opt = options.opt;
 
   if (opt > TOTAL_OF_OPTS)
   {
@@ -182,8 +184,8 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
   std::string output_directory = title_id;
 
    // Check for .dumping semaphore
-  std::filesystem::path dumping_semaphore(usb_device);
-  std::filesystem::path complete_semaphore(usb_device);
+  std::filesystem::path dumping_semaphore(dest_path);
+  std::filesystem::path complete_semaphore(dest_path);
   std::ofstream dumping_sem_touch(dumping_semaphore);
   
   if (opt == GAME_PATCH) {
@@ -213,7 +215,7 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
   }
 
   // Create base path
-  std::filesystem::path output_path(usb_device);
+  std::filesystem::path output_path(dest_path);
   output_path /= output_directory;
 
   // Make sure the base path is a directory or can be created
@@ -243,7 +245,7 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
               install_source /= title_id;
               install_source /= "ac.pkg";
 
-              std::filesystem::path install_destination(usb_device);
+              std::filesystem::path install_destination(dest_path);
               install_destination /= title_id + "-install.pkg";
 
               // Copy param.sfo
@@ -287,10 +289,19 @@ bool __dump(const std::string &usb_device, const std::string &title_id, Dump_Opt
           // Detect if on extended storage and make pkg_path
           std::filesystem::path ext_path("/mnt/ext0");
           ext_path += pkg_directory_path;
+          log_info("Ext0 path: %s", ext_path.string().c_str());
+
+          std::filesystem::path ext1_path("/mnt/ext1");
+          ext1_path += pkg_directory_path;
+          log_info("Ext1 path: %s", ext1_path.string().c_str());
 
           if (std::filesystem::exists(ext_path) && std::filesystem::is_regular_file(ext_path)) {
-              log_info("found ext hdd");
+              log_info("found ext0 hdd");
               pkg_path = ext_path;  
+          }
+          else if (std::filesystem::exists(ext1_path) && std::filesystem::is_regular_file(ext1_path)) {
+              log_info("found ext1 hdd");
+              pkg_path = ext1_path;  
           }
           else {
 

@@ -173,3 +173,225 @@ void es2sample_end( void )
     if(shader) glDeleteProgram(shader), shader = 0;
 }
 
+
+/*    SAVE DATA CODE LIFTED FROM HERE
+* ******************************************
+* **https://github.com/bucanero/apollo-ps4**
+* ******************************************
+* ******************************************/
+ /* Made with info from https://www.psdevwiki.com/ps4/Param.sfo. */
+ /*https://github.com/hippie68/sfo. */
+
+#if __has_include("<byteswap.h>")
+#include <byteswap.h>
+#else
+// Replacement function for byteswap.h's bswap_32
+uint32_t bswap_32(uint32_t val) {
+  val = ((val << 8) & 0xFF00FF00 ) | ((val >> 8) & 0x00FF00FF );
+  return (val << 16) | (val >> 16);
+}
+#endif
+
+// Complete param.sfo file structure, 4 parts:
+// 1. header
+// 2. all entries
+// 3. key_table.content (with trailing 4-byte alignment)
+// 4. data_table.content
+
+using namespace multi_select_options;
+struct header {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t key_table_offset;
+    uint32_t data_table_offset;
+    uint32_t entries_count;
+};
+
+header header;
+
+struct index_table_entry {
+    uint16_t key_offset;
+    uint16_t param_fmt;
+    uint32_t param_len;
+    uint32_t param_max_len;
+    uint32_t data_offset;
+} *entries;
+
+struct table {
+    unsigned int size;
+    char* content;
+} key_table, data_table;
+
+// Finds the param.sfo's offset inside a PS4 PKG file
+long int get_ps4_pkg_offset(FILE* file) {
+  uint32_t pkg_table_offset;
+  uint32_t pkg_file_count;
+  fseek(file, 0x00C, SEEK_SET);
+  fread(&pkg_file_count, 4, 1, file);
+  fseek(file, 0x018, SEEK_SET);
+  fread(&pkg_table_offset, 4, 1, file);
+  pkg_file_count = bswap_32(pkg_file_count);
+  pkg_table_offset = bswap_32(pkg_table_offset);
+  struct pkg_table_entry {
+    uint32_t id;
+    uint32_t filename_offset;
+    uint32_t flags1;
+    uint32_t flags2;
+    uint32_t offset;
+    uint32_t size;
+    uint64_t padding;
+  } pkg_table_entry[pkg_file_count];
+  fseek(file, pkg_table_offset, SEEK_SET);
+  fread(pkg_table_entry, sizeof (struct pkg_table_entry), pkg_file_count, file);
+  for (int i = 0; i < pkg_file_count; i++) {
+    if (pkg_table_entry[i].id == 1048576) { // param.sfo ID
+      return bswap_32(pkg_table_entry[i].offset);
+    }
+  }
+  log_error("[SFO] Could not find param.sfo in PKG file.");
+  return -1;
+}
+
+bool load_header(FILE* file) {
+    if (fread(&header, sizeof(struct header), 1, file) != 1) {
+		log_error("[SFO] Could not read header.");
+       return false;
+    }
+    return true;
+}
+
+bool load_entries(FILE* file) {
+    unsigned int size = sizeof(struct index_table_entry) * header.entries_count;
+    entries = (struct index_table_entry *)malloc(size);
+    if (entries == NULL) {
+	   log_error("[SFO] Could not allocate %u bytes of memory for index table.");
+       return false;
+    }
+    if (size && fread(entries, size, 1, file) != 1) {
+	   log_error("[SFO] Could not read index table entries.");
+       return false;
+    }
+    return true;
+}
+
+bool load_key_table(FILE* file) {
+    key_table.size = header.data_table_offset - header.key_table_offset;
+    key_table.content = (char *)malloc(key_table.size);
+    if (key_table.content == NULL) {
+       log_error("[SFO] Could not allocate %u bytes of memory for key table.",
+            key_table.size);
+       return false;
+    }
+    if (key_table.size && fread(key_table.content, key_table.size, 1, file) != 1) {
+		log_error("[SFO] Could not read key table.");
+       return false;
+    }
+    return true;
+}
+
+bool load_data_table(FILE* file) {
+    if (header.entries_count) {
+        data_table.size =
+            (entries[header.entries_count - 1].data_offset +
+                entries[header.entries_count - 1].param_max_len);
+    }
+    else {
+        data_table.size = 0; // For newly created, empty param.sfo files
+    }
+    data_table.content = (char*)malloc(data_table.size);
+    if (data_table.content == NULL) {
+       log_error("[SFO] Could not allocate %u bytes of memory for data table.",
+            data_table.size);
+       return false;
+    }
+    if (data_table.size && fread(data_table.content, data_table.size, 1, file) != 1) {
+		log_error("[SFO] Could not read data table.");
+       return false;
+    }
+    return true;
+}
+
+// Returns a parameter's index table position
+int get_index(char* key) {
+    for (int i = 0; i < header.entries_count; i++) {
+        if (strcmp(key, &key_table.content[entries[i].key_offset]) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void sfo_mem_to_file(char *file_name) {
+  FILE *file = fopen(file_name, "wb");
+  if (file == NULL) {
+    log_error("[SFO] Could not open file \"%s\" for writing.", file_name);
+    return;
+  }
+
+  // Adjust header's table offsets before saving
+  header.key_table_offset = sizeof(struct header) +
+    sizeof(struct index_table_entry) * header.entries_count;
+  header.data_table_offset = header.key_table_offset + key_table.size;
+
+  if (fwrite(&header, sizeof(struct header), 1, file) != 1) {
+    log_error("[SFO] Could not write header to file \"%s\".", file_name);
+  }
+  if (header.entries_count && fwrite(entries,
+    sizeof(struct index_table_entry) * header.entries_count, 1, file) != 1) {
+    log_error("[SFO] Could not write index table to file \"%s\".", file_name);
+  }
+  if (key_table.size && fwrite(key_table.content, key_table.size, 1, file) != 1) {
+    log_error("[SFO] Could not write key table to file \"%s\".", file_name);
+  }
+  if (data_table.size && fwrite(data_table.content, data_table.size, 1, file) != 1) {
+    log_error("[SFO] Could not write data table to file \"%s\".", file_name);
+  }
+
+  fclose(file);
+}
+
+bool extract_sfo_from_pkg(const char* pkg, const char* outdir){
+    // CAUTION! This function assumes you checked the pkg magic already
+    unlink(outdir); 
+    FILE* file = fopen(pkg, "rb"); // TODO: use Open for both next
+    if (file == NULL) {
+        log_error("Could not open file %s", pkg);
+        return false;
+    }
+
+     // Get SFO header offset
+    fseek(file, get_ps4_pkg_offset(file), SEEK_SET);
+
+
+    // Load file contents
+    if(!load_header(file)){
+        log_error("Could not load header");
+        fclose(file);
+        return false;
+    }
+    if(!load_entries(file)){
+        log_error("Could not load entries table");
+        fclose(file);
+        return false;
+    }
+     if(!load_key_table(file)){
+        log_error("Could not load data table");
+        fclose(file);
+        return false;
+    }
+    if(!load_data_table(file)){
+        log_error("Could not load data table");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+    
+    sfo_mem_to_file((char*)outdir);
+
+    if (entries) free(entries);
+    if (key_table.content) free(key_table.content);
+    if (data_table.content) free(data_table.content);
+
+    return true;
+}

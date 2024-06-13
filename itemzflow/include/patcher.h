@@ -36,6 +36,16 @@ struct _trainer_struct
     std::vector<std::string> controls_text;
 };
 
+
+struct _update_struct
+{
+    // stores 1 string, if you have more than 1
+    // use a vector of strings and use .size() to get the number of strings
+    std::string update_title, update_tid;
+    std::vector<std::string> update_version, update_size, update_json;
+    std::vector<std::string> update_text;
+};
+
 static std::map<std::string, u8> patch_type = {
     {"byte",    kpatch_type::byte},
     {"bytes16", kpatch_type::bytes16},
@@ -102,3 +112,7 @@ void get_metadata1(struct _trainer_struct *tmp,
 void patch_data(s32& pid, u32& items);
 void trainer_launcher();
 void dl_patches();
+
+extern int update_current_index;
+extern struct _update_struct update_info;
+bool Fetch_Update_Details(const std::string &title_id, const std::string &title, _update_struct &updateStruct, bool &is_connection_issue);

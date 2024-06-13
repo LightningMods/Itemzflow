@@ -8,7 +8,7 @@
 #include "dumper.h"
 
 namespace dump {
-bool __dump(const std::string& usb_device, const std::string& title_id, Dump_Options opt, const std::string& title);
+bool __dump(const Dumper_Options& options);
 bool dump_dlc(const std::string & usb_device, const std::string & title_id);
 } // namespace dump
 

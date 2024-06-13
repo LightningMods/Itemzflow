@@ -17,7 +17,17 @@ typedef enum Dump_Options {
 
 #define MB(x)   ((size_t) (x) << 20)
 
-bool Dumper(const std::string &dump_path,const std::string &title_id, Dump_Options opt, const std::string &title);
+typedef struct {
+    const char* dump_path;
+    const char* title_id;
+    Dump_Options opt;
+    const char* title;
+} Dumper_Options;
+
+#define YES 1
+#define NO  2
+
+bool Dumper(const Dumper_Options& options);
 std::vector<std::tuple<std::string, std::string, std::string>> query_dlc_database(const std::string& title_id);
 bool copy_dir(const std::string& source_dir, const std::string& dest_dir);
 

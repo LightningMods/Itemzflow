@@ -13,16 +13,14 @@
 #include "pc_shaders.h"
 #define FS_START_2 "/home/lm"
 #endif
-#include <string>
-#include <vector>
+#include "feature_classes.hpp"
+#include "patcher.h"
 #include <algorithm>
 #include <fstream>
-#include <sstream>
 #include <iostream>
-#include "feature_classes.hpp"
-#if defined(__ORBIS__)
-#include "patcher.h"
-#endif
+#include <sstream>
+#include <string>
+#include <vector>
 
 GLuint ic = GL_NULL;
 extern VertexBuffer title_vbo, test_v;
@@ -62,6 +60,8 @@ extern vec2 p1_pos;  // unused yet
 #if defined(__ORBIS__)
 extern struct _trainer_struct trs;
 #endif
+
+std::string old_tid;
 
 using namespace multi_select_options;
 void draw_rect(vec4 &color, float x, float y, float w, float h){
@@ -207,24 +207,6 @@ std::string uninstall_get_str(Uninstall_Multi_Sel num) {
     }
 }
 
-std::string save_game_get_str(SAVE_Multi_Sel num) {
-
-    if(gm_save.numb_of_saves > gm_save.ui_requested_save)
-       gm_save.ui_requested_save++;
-    else
-        gm_save.ui_requested_save = 0;
-        
-    switch (num) {
-    case BACKUP_GAME_SAVE:
-        return getLangSTR(LANG_STR::BACKUP_SAVE);
-    case RESTORE_GAME_SAVE:
-        return getLangSTR(LANG_STR::IMPORT_SAVE);
-    case DELETE_GAME_SAVE:
-        return getLangSTR(LANG_STR::SAVE_DELETE);
-    default:
-        return "OUT_OF_INDEX_ERROR";
-    }
-}
 
 std::string dumper_opt_get_str(Dump_Multi_Sels num) {
     //0 is DUMP ALL
@@ -418,12 +400,11 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
         }
         case cf_ops::REG_OPTS::RESTORE_APPS: // 3
         case cf_ops::REG_OPTS::MOVE_APPS:    // 3
-        case cf_ops::REG_OPTS::GAME_SAVE: // 3
-            if (!li.multi_sel.is_active)
-            {
-                li.multi_sel.pos = (ivec4){0, 0, 0, 3};
-                li.multi_sel.is_active = true;
-            }
+        case cf_ops::REG_OPTS::RETAIL_UPDATES: // 3
+          if (!li.multi_sel.is_active) {
+            li.multi_sel.pos = (ivec4){0, 0, 0, cf_ops::REG_OPTS::RETAIL_UPDATES ? update_info.update_version.size() : 3};
+            li.multi_sel.is_active = true;
+          }
         case cf_ops::REG_OPTS::TRAINERS:
 #if defined(__ORBIS__)
            if (!li.multi_sel.is_active)
@@ -490,67 +471,59 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                         get->un_opt = (multi_select_options::Uninstall_Multi_Sel)li.multi_sel.pos.y;
                         break;
                     }
-                    case cf_ops::REG_OPTS::GAME_SAVE:{
-#if defined(__ORBIS__)
-      if(!gm_save.is_loaded || gm_save.ui_requested_save != gm_save.ui_current_save){
-        if(!(gm_save.is_loaded  = GameSave_Info(&gm_save, (gm_save.ui_requested_save == -1) ? 0 : gm_save.ui_requested_save))){ 
-               log_error("Fetching Save Info failed");
-               tmp =  asset_path("no_save.png");
-               gm_save.numb_of_saves = 0;
-        }
-        else{
-              tmp = fmt::format("/user/home/{0:x}/savedata_meta/user/{1:}/{2:}_icon0.png", gm_save.userid, gm_save.title_id, gm_save.dir_name);
-              if(!if_exists(tmp.c_str()))
-                tmp = asset_path("no_save.png");
-        }
-        gm_save.icon_path =  tmp;
+                    case cf_ops::REG_OPTS::RETAIL_UPDATES: {
+                      update_current_index = li.multi_sel.pos.y;
+                      int numb_of_updates = li.multi_sel.pos.w = update_info.update_version.size();
+//#if defined(__ORBIS__)
+                      if (old_tid != update_info.update_title) {
+                        ic = all_apps[g_idx].icon.texture;
+                        old_tid = update_info.update_title;
+                      }
 
-        if(ic > GL_NULL){
-           glDeleteTextures(1, &ic), ic = GL_NULL;
-        } // load icon
-        ic = load_png_asset_into_texture(gm_save.icon_path.c_str());
-        gm_save.ui_current_save = gm_save.ui_requested_save;
-        fmt::print("SaveData Icon: {0:} && gm_save.is_loaded: {1:}", gm_save.icon_path, gm_save.is_loaded);
-      }
-#else
-      gm_save.is_loaded = false;
-#endif
+//#endif
+                        log_info("numb_of_updates: %i", numb_of_updates);
                         vec4 color = (vec4){.8164, .8164, .8125, 1.};
                         vec2 pen;
                         pen.x = 800., pen.y = 750.;
-                        tmp = fmt::format("{0:} {1:}", gm_save.numb_of_saves, (gm_save.numb_of_saves > 1) ? getLangSTR(LANG_STR::FOUND_SAVE_MESSAGE_OVER_1) : getLangSTR(LANG_STR::FOUND_SAVE_MESSAGE) );
+                        tmp = fmt::format("{0:} {1:}", numb_of_updates, (numb_of_updates > 1) ? getLangSTR(LANG_STR::FOUND_MORE_THAN_1_PATCH) : getLangSTR(LANG_STR::ONE_PATCH_FOUND) );
                         l.vbo.add_text( sub_font, tmp, color, pen);
 
                         pen.y = 710., pen.x = 1040.;
-                        l.vbo.add_text( main_font, all_apps[g_idx].info.name, color, pen);
+                        l.vbo.add_text( main_font, update_info.update_title, color, pen);
                         // ONLY CONTINUE IF SAVE IS LOADED
-                        if(!gm_save.is_loaded){
-                           pen.y = 680., pen.x = 1040.;
-                           tmp = fmt::format("{0:}: {1:#x}", getLangSTR(LANG_STR::USER_LANG), gm_save.userid);
-                           l.vbo.add_text( main_font, tmp, color, pen);
-                           tmp = fmt::format(" < {} >", getLangSTR(LANG_STR::IMPORT_SAVE));
-                           li.multi_sel.pos.y = RESTORE_GAME_SAVE;
+                        #if defined(__ORBIS__)
+                        bool is_fpkg = false;
+                        #else
+                        bool is_fpkg = all_apps[g_idx].flags.is_fpkg;
+                        #endif
+                        if (!numb_of_updates || is_fpkg) {
+                          pen.y = 680., pen.x = 1040.;
+                          tmp = is_fpkg ? getLangSTR(LANG_STR::FEATURE_DOES_NOT_SUPPORT_FPKGS) :  getLangSTR(LANG_STR::NO_PATCHES_FOUND) ;
+                          l.vbo.add_text(main_font, tmp, color, pen);
+                          // tmp = fmt::format(" < {} >", getLangSTR(LANG_STR::IMPORT_SAVE));
+                          // li.multi_sel.pos.y = RESTORE_GAME_SAVE;
+                           tmp = fmt::format("< {} >", getLangSTR(LANG_STR::NO_PATCHES_FOUND));
                            break;
                         }
 
-                        pen.y = 680., pen.x = 1040.;
-                        l.vbo.add_text( main_font, gm_save.mtime, color, pen);
-                        pen.y = 650., pen.x = 1040.;
-                        tmp = fmt::format("{0:}: {1:#x}", getLangSTR(LANG_STR::USER_LANG), gm_save.userid);
-                        l.vbo.add_text( main_font, tmp, color, pen);
-                        pen.y = 620., pen.x = 1040.; //KB to Bytes to String
-                        tmp = fmt::format("{} | {} Blocks", calculateSize(gm_save.size * 1000), gm_save.blocks);
-                        l.vbo.add_text( main_font, tmp, color, pen);
-                        pen.y = 570., pen.x = 790.;
-                        l.vbo.add_text( main_font, fmt::format("{0:.45}", gm_save.detail), color, pen);
-                        pen.y = 595., pen.x = 1040.;
-                        l.vbo.add_text( main_font, fmt::format("{0:.45}", gm_save.main_title), color, pen);
-                        pen.y = 500., pen.x = 1265.;
-                        l.vbo.add_text( main_font, fmt::format("{}/{}", gm_save.ui_requested_save, gm_save.numb_of_saves), color, pen);
+                        if (update_current_index > numb_of_updates){
+                            log_info("update_current_index: %i numb_of_updates: %i", update_current_index, numb_of_updates);
+                            break;
+                        }
 
-                        tmp = fmt::format("< {0:.20} >", save_game_get_str((multi_select_options::SAVE_Multi_Sel)li.multi_sel.pos.y));
+                        pen.y = 680., pen.x = 1040.;
+                        l.vbo.add_text(main_font, fmt::format("TID {}", update_info.update_tid), color, pen);
+                        pen.y = 650., pen.x = 1040.;
+                         l.vbo.add_text( main_font, fmt::format("{} {}", getLangSTR(LANG_STR::PATCH_VERSION), update_info.update_version[update_current_index]), color, pen);
+                        pen.y = 620., pen.x = 1040.; //KB to Bytes to String
+                        tmp = fmt::format("{} {}", getLangSTR(LANG_STR::PATCH_SIZE), calculateSize(std::stol(update_info.update_size[update_current_index])));
+                        l.vbo.add_text(main_font, tmp, color, pen);
+                        pen.y = 500., pen.x = 1265.;
+                        l.vbo.add_text( main_font, fmt::format("{}/{}", (int)li.multi_sel.pos.y+1, numb_of_updates), color, pen);
+
+                        tmp = fmt::format("< {} v{} >", getLangSTR(LANG_STR::DOWNLOAD_PATCH), update_info.update_version[update_current_index]); 
                         break;
-                    }//move_app_get_str((MOVE_OPTIONS)li.multi_sel.pos.y)
+                    } // move_app_get_str((MOVE_OPTIONS)li.multi_sel.pos.y)
                     case cf_ops::REG_OPTS::RESTORE_APPS:{
                         tmp = fmt::format("< {0:.20} >", restore_app_get_str((multi_select_options::RESTORE_OPTIONS)li.multi_sel.pos.y));
                         break;
@@ -714,29 +687,9 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                     }
                     break;
                 }
-                case cf_ops::REG_OPTS::GAME_SAVE:{
+                case cf_ops::REG_OPTS::RETAIL_UPDATES:{
                     print_option_info(l, pen, getLangSTR(LANG_STR::GAME_SAVE), "", false);
-                    if (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE)
-                    {
-                        // show '< X >' around Option
-                        switch (li.multi_sel.pos.y)
-                        {
-                        case multi_select_options::BACKUP_GAME_SAVE:
-                            print_option_info(l, pen, "", getLangSTR(LANG_STR::BACKUP_GAME_INFO), false);
-                            break;
-                        case multi_select_options::RESTORE_GAME_SAVE:
-                            print_option_info(l, pen, "", getLangSTR(LANG_STR::RESTORE_GAME_INFO), false);
-                            break;
-                        case multi_select_options::DELETE_GAME_SAVE:
-                            print_option_info(l, pen, "", getLangSTR(LANG_STR::DELETE_GAME_INFO), false);
-                            break;
-                        default:
-                            break;
-                        }
-                    }
-
                     break;
-
                 }
 
                 default:
@@ -1102,12 +1055,12 @@ void  GLES2_render_layout_v2(view_t vw)
         v.push_back(r);
         ORBIS_RenderFillRects(USE_COLOR, tv, v, 1);
     }
-    if (vw == ITEM_PAGE && ls_p.curr_item == cf_ops::REG_OPTS::GAME_SAVE && skipped_first_X)
+    if (vw == ITEM_PAGE && ls_p.curr_item == cf_ops::REG_OPTS::RETAIL_UPDATES && skipped_first_X && update_info.update_version.size() > 0)
     {
         vec4 cc = (vec4){41., 41., 41., 256.} / 256.;
         draw_rect(cc, 770., 800., 600., -320.);
         if(ic > GL_NULL){
-           render_button(ic, 128., 228., 800., 600., 1.);
+          render_button(ic, 170., 170., 840., 560., 1.);
         }
     }
     else if (vw == ITEM_PAGE && ls_p.curr_item == cf_ops::REG_OPTS::TRAINERS && skipped_first_X)

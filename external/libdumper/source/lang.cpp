@@ -38,8 +38,8 @@ std::string getDumperLangSTR(Lang_ST str)
 {
     if (lang_is_dumper_initialized)
     {
-        if (dmpstropts[lang_key[str]].empty() || str > LANG_NUM_OF_STRINGS)
-            return "String NOT found";
+        if (str > LANG_NUM_OF_STRINGS || dmpstropts[lang_key[str]].empty())
+            return "String not found";
         else
             return dmpstropts[lang_key[str]];
     }

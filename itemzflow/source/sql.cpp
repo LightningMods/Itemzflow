@@ -239,10 +239,10 @@ bool If_Save_Exists(const char *userPath, save_entry_t *item)
         return false;
 
     tmp = fmt::format("SELECT id FROM savedata WHERE dir_name = '{}' LIMIT 1", item->dir_name);
-    if (sqlite3_exec(db, tmp.c_str(), int_cb, &id, &err_msg) != SQLITE_OK || id == -1)
+    if (sqlite3_exec(db, tmp.c_str(), int_cb, &id, &err_msg) != SQLITE_OK || id < 0)
     {
 
-        if (id == -1 && !err_msg)
+        if (id < 0 && !err_msg)
             log_error("[SAVE] No Game Saves Found for %s", item->title_id.c_str());
         else
             log_error("[SAVE] Failed to fetch data: %s", sqlite3_errmsg(db));
@@ -263,7 +263,7 @@ bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value)
     u32 userId = -1;
     int ret, vis = -1;
 
-    log_info("[SQL] tid %s write_value %i", tid.c_str(), write_value);
+    //log_info("[SQL] tid %s write_value %i", tid.c_str(), write_value);
 
     if (!SQL_Load_DB(APP_DB))
         return false;
@@ -412,7 +412,7 @@ bool change_game_name(std::string new_title, std::string tid, std::string sfo_pa
 /* https://github.com/bucanero/apollo-ps4/commit/c7bbd262f9b243878372ae7134f581e016467c9c */
 bool addcont_dlc_rebuild(const char* db_path, bool ext_hdd)
 {
-	char path[256];
+	char path[1024];
 	DIR *dp, *dp2;
     int ret = 0;
 	struct dirent *dirp, *dirp2;
@@ -472,11 +472,11 @@ bool addcont_dlc_rebuild(const char* db_path, bool ext_hdd)
                 query = fmt::format("INSERT OR IGNORE INTO addcont(title_id, dir_name, content_id, title, version, attribute, status, titles_JAPANESE, titles_ENGLISH_US, titles_FRENCH, titles_SPANISH, titles_GERMAN, titles_ITALIAN, titles_DUTCH, titles_PORTUGUESE_PT, titles_RUSSIAN, titles_KOREAN, titles_CHINESE_T, titles_CHINESE_S, titles_FINNISH, titles_SWEDISH, titles_DANISH, titles_NORWEGIAN, titles_POLISH, titles_PORTUGUESE_BR, titles_ENGLISH_GB, titles_TURKISH, titles_SPANISH_LA, titles_ARABIC, titles_FRENCH_CA, titles_CZECH, titles_HUNGARIAN, titles_GREEK, titles_ROMANIAN, titles_THAI, titles_VIETNAMESE, titles_INDONESIAN) VALUES('{0:}', \"{1:}\", '{2:}', '{3:}', {4:}, '{5:}', '{6:}', '{7:}', '{8:}', '{9:}', '{10:}', '{11:}', '{12:}', '{13:}', '{14:}', '{15:}', '{16:}', '{17:}', '{18:}', '{19:}', '{20:}', '{21:}', '{22:}', '{23:}', '{24:}', '{25:}', '{26:}', '{27:}', '{28:}', '{29:}', '{30:}', '{31:}', '{32:}', '{33:}', '{34:}', '{35:}', '{36:}')", dirp->d_name, dirp2->d_name, dlc_details.contentid, dlc_details.name, ext_hdd ? "1610612736" : "536870912", dlc_details.version.c_str(), dlc_details.esd["IRO_TAG"].empty() ? "0" : dlc_details.esd["IRO_TAG"].c_str(), dlc_details.esd["TITLE_00"].c_str(), dlc_details.esd["TITLE_01"].c_str(), dlc_details.esd["TITLE_02"].c_str(), dlc_details.esd["TITLE_03"].c_str(), dlc_details.esd["TITLE_04"].c_str(), dlc_details.esd["TITLE_05"].c_str(), dlc_details.esd["TITLE_06"].c_str(), dlc_details.esd["TITLE_07"].c_str(), dlc_details.esd["TITLE_08"].c_str(), dlc_details.esd["TITLE_09"].c_str(), dlc_details.esd["TITLE_10"].c_str(), dlc_details.esd["TITLE_11"].c_str(), dlc_details.esd["TITLE_12"].c_str(), dlc_details.esd["TITLE_13"].c_str(), dlc_details.esd["TITLE_14"].c_str(), dlc_details.esd["TITLE_15"].c_str(), dlc_details.esd["TITLE_16"].c_str(), dlc_details.esd["TITLE_17"].c_str(), dlc_details.esd["TITLE_18"].c_str(), dlc_details.esd["TITLE_19"].c_str(), dlc_details.esd["TITLE_20"].c_str(), dlc_details.esd["TITLE_21"].c_str(), dlc_details.esd["TITLE_22"].c_str(), dlc_details.esd["TITLE_23"].c_str(), dlc_details.esd["TITLE_24"].c_str(), dlc_details.esd["TITLE_25"].c_str(), dlc_details.esd["TITLE_26"].c_str(), dlc_details.esd["TITLE_27"].c_str(), dlc_details.esd["TITLE_28"].c_str(), dlc_details.esd["TITLE_29"].c_str());			
                 if (sqlite3_exec(db, query.c_str(), NULL, NULL, NULL) != SQLITE_OK){
                     log_info("[PASS2] addcont insert failed: %s", sqlite3_errmsg(db));
-                    //log_info("addcont insert failed for %s", query.c_str());
+                    log_info("addcont insert failed for %s", query.c_str());
                 }
             
             }
-            //   log_info("addcont insert success %s", query.c_str());
+            log_info("addcont insert success %s", query.c_str());
             dlc_details.esd.clear();
             dlc_details.name.clear();
             dlc_details.version.clear(); 
@@ -519,7 +519,7 @@ bool insert_app_info(std::string titleId, std::string key, std::string value = s
 
 }
  
-bool Fix_Game_In_DB(ThreadSafeVector<item_t> &app_info, int index, bool is_ext_hdd) {
+bool Fix_Game_In_DB(item_t &item, bool is_ext_hdd) {
   std::string tmp;
   std::string tmp2;
   int ret = -1;
@@ -527,10 +527,6 @@ bool Fix_Game_In_DB(ThreadSafeVector<item_t> &app_info, int index, bool is_ext_h
   OrbisUserServiceRegisteredUserIdList userIdList;
   char name[20];
 
-  if (app_info.empty() || index > app_info.size())
-    return false;
-
-  auto item = app_info.at(index);
   memset(&userIdList, 0, sizeof(userIdList));
 
   if (!SQL_Load_DB(APP_DB))
