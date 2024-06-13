@@ -207,7 +207,7 @@ typedef enum Dump_Options {
 
 extern multi_select_options::Dump_Multi_Sels dump;
 
-bool does_patch_exist(std::string tid);
+bool does_patch_exist(std::string tid, std::string &out_dir);
 
 enum SORT_APPS_BY {
     SORT_NA = -1,

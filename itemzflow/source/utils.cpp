@@ -2316,14 +2316,14 @@ std::string NormalizeFWVersion(int version) {
   return versionString;
 }
 
-bool does_patch_exist(std::string tid) {
-  std::string tmp = fmt::format("/user/patch/{}/patch.pkg", tid);
+bool does_patch_exist(std::string tid, std::string &out_dir) {
+  std::string tmp = out_dir = fmt::format("/user/patch/{}/patch.pkg", tid);
   if (!if_exists(tmp.c_str())) {
       log_info("/user patch not found");
-      tmp = fmt::format("/mnt/ext1/user/patch/{}/patch.pkg", tid);
+      out_dir = tmp = fmt::format("/mnt/ext1/user/patch/{}/patch.pkg", tid);
     if (!if_exists(tmp.c_str())) {
         log_info("/mnt/ext1 patch not found");
-        tmp = fmt::format("/mnt/ext0/user/patch/{}/patch.pkg", tid);
+        out_dir = tmp = fmt::format("/mnt/ext0/user/patch/{}/patch.pkg", tid);
       if (!if_exists(tmp.c_str())) {
         log_info("/mnt/ext0 patch not found");
         //ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_PATCH_AVAIL), "");

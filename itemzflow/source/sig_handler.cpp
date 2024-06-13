@@ -236,7 +236,7 @@ bool Dump_w_opts(std::string tid, std::string d_p, std::string gtitle,
     options.opt = BASE_GAME;
     if (Dumper(options)) {
       options.opt = GAME_PATCH;
-      if (!does_patch_exist(title_id.get())) {
+      if (!does_patch_exist(title_id.get(), tmp)) {
         return true;
       }
       print_memory();
@@ -246,7 +246,7 @@ bool Dump_w_opts(std::string tid, std::string d_p, std::string gtitle,
       options.opt = REMASTER;
       if (Dumper(options)) {
         options.opt = GAME_PATCH;
-        if (!does_patch_exist(title_id.get())) {
+        if (!does_patch_exist(title_id.get(), tmp)) {
           return true;
         }
         print_memory();

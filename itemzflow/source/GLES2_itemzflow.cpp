@@ -41,6 +41,7 @@ extern int retry_mp3_count;
 extern vec2 resolution;
 
 std::mutex disc_lock;
+extern std::atomic_int AppVis;
 
 std::atomic<GameStatus> app_status(APP_NA_STATUS);
 extern int numb_of_settings;
@@ -1368,7 +1369,7 @@ void printDirContentRecursively(const std::filesystem::path& path, const std::st
 }
 void Start_Dump(std::string name, std::string path, multi_select_options::Dump_Multi_Sels opt) {
   #if defined(__ORBIS__)
-
+  std::string patch_dir;
   if (path.find("/mnt/usb") != std::string::npos) {
     if (usbpath() == -1) {
       fmt::print("path is %s However, no USB is connected...", path);
@@ -1380,18 +1381,67 @@ void Start_Dump(std::string name, std::string path, multi_select_options::Dump_M
   if (if_exists(path.c_str())) {
     if (check_free_space(path.c_str()) >= app_inst_util_get_size(title_id.get().c_str())) {
       if (opt == SEL_FPKG) {
-        tmp = fmt::format("{}/{}.pkg", path, title_id.get());
+          std::string base_path = fmt::format("{}/{}", path, title_id.get());
+          mkdir(base_path.c_str(), 0777);
+          tmp = fmt::format("{}/{}_base.pkg", base_path, title_id.get());
+          log_info("path is %s", tmp.c_str());
+          if (!copyFile(all_apps[g_idx].info.package, tmp, true)){
+              ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FPKG_COPY_FAILED), "");
+              return;
+          }
+          tmp = fmt::format("{}/{}_patch.pkg", base_path, title_id.get());
+          log_info("path is %s", tmp.c_str());
+          if (does_patch_exist(title_id.get(), patch_dir)){
+              if (!copyFile(patch_dir, tmp, true)){
+                   ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FPKG_COPY_FAILED), "");
+                   return;
+               }
+          }
 
-        if (copyFile(all_apps[g_idx].info.package, tmp, true))
-          ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::FPKG_COPY_SUCCESS), "");
-        else
-          ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FPKG_COPY_FAILED), "");
+         std::vector < std::tuple < std::string, std::string, std::string >> dlc_info = query_dlc_database(title_id.get());
+         for (const auto & result: dlc_info) {
+             // std::cout << "PKG: " << std::get < 0 > (result) << " | DLC Name: " << std::get < 1 > (result) << " | Full Content ID: " << std::get < 2 > (result) << std::endl;
+              log_info("PKG: %s, | DLC Name: %s, content_id %s", std::get < 0 > (result).c_str(), std::get < 1 > (result).c_str(), std::get < 2 > (result).c_str());
+         }
+
+        std::string addcont_path_str;
+        std::string user_addcont_dir = "/user/addcont/" + title_id.get();
+        std::string ext_addcont_dir = "/mnt/ext0/user/addcont/" + title_id.get();
+        std::string disc_addcont_dir = "/mnt/disc/addcont/" + title_id.get();
+
+        if (if_exists(user_addcont_dir.c_str())) {
+         addcont_path_str = user_addcont_dir;
+        } else if (if_exists(ext_addcont_dir.c_str())) {
+           addcont_path_str = ext_addcont_dir;
+        } else {
+          addcont_path_str = disc_addcont_dir;
+        }
+
+        for (const auto & result: dlc_info) {
+            std::filesystem::path pkg_path(addcont_path_str + "/" + std::get < 0 > (result));
+            log_info("path: %s", pkg_path.string().c_str());
+            if (std::filesystem::is_directory(pkg_path)) {
+                pkg_path /= "ac.pkg";
+                if (std::filesystem::exists(pkg_path) && std::filesystem::is_regular_file(pkg_path)) {
+                     tmp = fmt::format("{}/{}.pkg", base_path, std::get<1>(result));
+                    if (!copyFile(pkg_path, tmp, true)){
+                        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FPKG_COPY_FAILED), "");
+                        break;
+                    }
+                }
+                else{
+                   log_error("path: %s is NOT A PKG", pkg_path.string().c_str());
+                }
+            }
+        }
+
+        ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::FPKG_COPY_SUCCESS), "");
 
         return;
       } 
       else if (opt == SEL_GAME_PATCH) {
 
-           if (!does_patch_exist(title_id.get())) {
+           if (!does_patch_exist(title_id.get(), patch_dir)) {
                ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_PATCH_AVAIL), "");
                return;
             }
@@ -1891,7 +1941,7 @@ X_action_dispatch(int action, layout_t & l)
         log_info("App vis b4: %i", all_apps[g_idx].flags.app_vis);
         msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::DB_MOD_WARNING));
 
-        if (!AppDBVisiable(all_apps[g_idx].info.name, VIS_WRTIE, all_apps[g_idx].flags.app_vis ? 0 : 1))
+        if (!AppDBVisiable(all_apps[g_idx].info.id, VIS_WRTIE, all_apps[g_idx].flags.app_vis ? 0 : 1))
             ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::UNHIDE_FAILED_NOTIFY), "");
         else
         {
@@ -1899,6 +1949,8 @@ X_action_dispatch(int action, layout_t & l)
                 ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::UNHIDE_NOTIFY), getLangSTR(LANG_STR::HIDE_SUCCESS_NOTIFY));
             else
                 ani_notify(NOTIFI::GAME, getLangSTR(LANG_STR::UNHIDE_NOTIFY), getLangSTR(LANG_STR::UNHIDE_SUCCESS_NOTIFY));
+
+            AppVis = all_apps[g_idx].flags.app_vis ^= 1;
         }
         break;
     }

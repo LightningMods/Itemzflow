@@ -142,120 +142,6 @@ typedef struct save_entry
 } save_entry_t;
 */
 //SELECT COUNT(*) FROM savedata WHERE title_id = 'CUSA00744'
-bool GameSave_Info(save_entry_t *item, int off)
-{
-    std::string tmp;
-    int err = 0;
-    sqlite3_stmt *stmt;
-
-    if(title_id.get().empty()){
-        log_error("title_id is empty");
-        return false;
-    }
-
-    item->title_id = title_id.get();
-    
-    if ((err = sceUserServiceGetForegroundUser(&item->userid)) != ITEMZCORE_SUCCESS)
-    {
-        log_error("[ERROR] sceUserServiceGetForegroundUser ERROR: %x", err);
-        return false;
-    }
-
-    tmp = fmt::format("/system_data/savedata/{0:x}/db/user/savedata.db", item->userid);
-
-    if (!SQL_Load_DB(tmp.c_str()))
-        return false;
-
-    item->numb_of_saves = 0;
-
-    tmp = fmt::format("SELECT COUNT(*) FROM savedata WHERE title_id = '{}'", item->title_id);
-
-	err = sqlite3_prepare_v2(db, tmp.c_str(), -1, &stmt, 0);
-	if(err){
-		log_error("Selecting data from DB Failed");	
-		return false;
-	}
-	
-    if (sqlite3_step(stmt) == SQLITE_ERROR) {
-        log_debug("Error when counting rows for item->numb_of_saves %s",sqlite3_errmsg(db));
-        return false;
-    }
-    else 
-       item->numb_of_saves = sqlite3_column_int(stmt, 0);
-
-    log_debug("item->numb_of_saves: %d",item->numb_of_saves);
-
-    if(item->numb_of_saves == 0)
-        return false;
-
-    sqlite3_finalize(stmt);
-    tmp = fmt::format("SELECT * FROM savedata WHERE title_id = '{0:}' LIMIT 1 OFFSET {1:d}", item->title_id, off); 
-	
-	err = sqlite3_prepare_v2(db ,tmp.c_str(), -1, &stmt, 0);
-	if(err){
-		log_error("Selecting data from DB Failed");	
-		return false;
-	}
-
-	while(1)
-	{
-		// fetch a row’s status
-		err = sqlite3_step(stmt);	
-		if(err == SQLITE_ROW)
-		{	
-            item->dir_name =  std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
-            item->main_title = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
-            item->sub_title =  std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
-            item->detail = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
-            item->mtime =  std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12)));
-            item->size = sqlite3_column_int(stmt,11);
-            item->blocks = sqlite3_column_int(stmt,9);
-
-			log_debug("item->detail: %s",item->detail.c_str());	
-		}
-		else if(err == SQLITE_DONE){
-			// All rows finished
-			log_debug("All rows fetched");
-			break;
-		}
-        else if (err == SQLITE_ERROR){
-            return false;
-        }
-	}
-	
-	sqlite3_finalize(stmt);
-    sqlite3_close(db);
-
-    return true;
-}
-
-
-bool If_Save_Exists(const char *userPath, save_entry_t *item)
-{
-    std::string tmp;
-    int id = -1;
-
-    if (!SQL_Load_DB(userPath))
-        return false;
-
-    tmp = fmt::format("SELECT id FROM savedata WHERE dir_name = '{}' LIMIT 1", item->dir_name);
-    if (sqlite3_exec(db, tmp.c_str(), int_cb, &id, &err_msg) != SQLITE_OK || id < 0)
-    {
-
-        if (id < 0 && !err_msg)
-            log_error("[SAVE] No Game Saves Found for %s", item->title_id.c_str());
-        else
-            log_error("[SAVE] Failed to fetch data: %s", sqlite3_errmsg(db));
-
-        sqlite3_close(db);
-        return false;
-    }
-
-    fmt::print("[SAVE] ID Found: %i", id);
-
-    sqlite3_close(db);
-    return true;
-}
 
 bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value)
 {
@@ -279,7 +165,9 @@ bool AppDBVisiable(std::string tid, APP_DB_VIS opt, int write_value)
     else
         tmp = fmt::format("UPDATE tbl_appbrowse_0{0:d} SET visible = {1:d} WHERE titleId = '{2:}'", userId, write_value, tid);
 
-    if (sqlite3_exec(db, tmp.c_str(), int_cb, &vis, &err_msg) != SQLITE_OK)
+    log_info("tmp: %s", tmp.c_str());
+
+    if (sqlite3_exec(db, tmp.c_str(), int_cb, &vis, &err_msg) != SQLITE_OK && !err_msg )
     {
         log_error("[APPDB] Failed to fetch data: %s", sqlite3_errmsg(db));
         
