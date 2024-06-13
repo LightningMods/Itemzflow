@@ -15,6 +15,7 @@
 - [OrbisDev SDK](https://github.com/orbisdev/orbisdev) 
 - [OOSDK for PRXs](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) 
 - [JSMN](https://github.com/zserge/jsmn) (MIT)
+- [nlohmann JSON](https://github.com/nlohmann/json) (MIT)
 - [INI Parser](https://github.com/0xe1f/psplib/tree/master/libpsp) (Apache License 2.0)
 - [RSA Verify (ARMmbed)](https://github.com/ARMmbed/mbedtls) (Apache License 2.0)
 - [OpenSSL/MD5](https://github.com/openssl/openssl) (Apache License 2.0)
@@ -225,9 +226,8 @@ Examples:
 We accept the following methods
 
 - [Ko-fi](https://ko-fi.com/lightningmods)
-- BTC: bc1qgclk220glhffjkgraju7d8xjlf7teks3cnwuu9
 
-if you donate and dont want to the message anymore created this folder after donating ``
+**Note**: Donating will remove the startup support message
 
 ## Credits
 
