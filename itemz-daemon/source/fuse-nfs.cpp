@@ -927,14 +927,14 @@ int initialize_userland_fuse(const char* mp, const char* ip)
     log_info("Starting FUSE ...");
     sceKernelSetBesteffort(ULPMGR_THREAD_PRIO_BASE, 255); // set best cpu effort to highest for IO
 
-    if(!if_exists("/dev/mira")){
+   // if(!if_exists("/dev/mira")){
 	  log_info("fuse: Mira not found");
       if(!fuse_fw_supported())
 		  return FUSE_FW_NOT_SUPPORTED;
-    }
-    else
-      log_debug("fuse: Mira found, no patches will be applied");
-	
+  ////  }
+   // else
+  //    log_debug("fuse: Mira found, no patches will be applied");
+	////
 	struct fuse_actions args = { args.argc = 16 };
 	snprintf(args.path, sizeof(args.path)-1, "%s", mp);
 	snprintf(args.ip, sizeof(args.ip)-1, "%s", ip);

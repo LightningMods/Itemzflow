@@ -19,6 +19,7 @@
 
 namespace npbind {
 std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: ignore
+    std::error_code ec;
   // Check for empty or pure whitespace path
   if (path.empty() || std::all_of(path.begin(), path.end(), [](char c) { return std::isspace(c); })) {
     log_error("Empty path argument!");
@@ -26,7 +27,7 @@ std::vector<npbind::NpBindEntry> read(const std::string &path) { // Flawfinder: 
   }
 
   // Check if file exists and is file
-  if (!std::filesystem::is_regular_file(path)) {
+  if (!std::filesystem::is_regular_file(path, ec)) {
     log_error("Input path does not exist or is not a file!");
     return std::vector<npbind::NpBindEntry>();
   }

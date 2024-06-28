@@ -2,6 +2,7 @@
     listing local folder using getdents()
 */
 
+#include <cstddef>
 #include <string.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -40,7 +41,19 @@
 #include <sstream>
 
 int HDD_count = -1;
-const char *SPECIAL_XMB_ICON_TID[] = {APP_HOME_DATA_TID, APP_HOME_HOST_TID, DEBUG_SETTINGS_TID};
+const char *SPECIAL_XMB_ICON_TID[] = {APP_HOME_DATA_TID, APP_HOME_HOST_TID, DEBUG_SETTINGS_TID, WORKSPACE0_TID};
+std::vector<std::string> Host_app_mounted_dirs;
+#if defined(__ORBIS__)
+#include <sys/uio.h>
+#include <sys/mount.h>
+
+
+void unmount_atexit(){
+
+  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
+  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+}
+#endif
 
 bool if_exists(const char *path)
 {
@@ -57,6 +70,26 @@ bool if_exists(const char *path)
     return (stat(path, &buffer) == 0);
 }
 
+int getDirectoryDepth(const std::string& path) {
+    int depth = 0;
+
+    for (char character : path) {
+        if (character == '/' || character == '\\') {
+            ++depth;
+        }
+    }
+
+    return depth;
+}
+std::string getFolderName(const std::string &fullPath) {
+  size_t lastSlash = fullPath.find_last_of('/');
+  if (lastSlash != std::string::npos) {
+    return fullPath.substr(lastSlash + 1);
+  } else {
+    // No folder separator found, return the full path
+    return fullPath;
+  }
+}
 bool filter_entry_on_IDs(const char *entry)
 {
     if (strlen(entry) != 9)
@@ -235,10 +268,26 @@ bool is_vapp(std::string tid)
            if(tid == APP_HOME_HOST_TID)
              return true;
         }
+        if (tid == WORKSPACE0_TID)
+            return true;
+
+        for (auto item : all_apps) {
+          if (item.info.id == tid) {
+            return item.flags.is_vapp;
+          }
+        }
     }
     
 
     return false;
+}
+
+// Modified findGames function
+bool ScanForVapps() {
+  
+  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
+  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+  return true;
 }
 
 
@@ -279,6 +328,8 @@ std::vector<uint8_t> readFile(std::string filename)
     vec.insert(vec.begin(),
                std::istream_iterator<uint8_t>(file),
                std::istream_iterator<uint8_t>());
+
+    file.close();
 
     return vec;
 }
@@ -374,6 +425,7 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
     if_app.info.picpath = no_icon_path;
     if_app.info.name = "ItemzCore_ls_dir";
     if_app.info.id = "ITEM99999";
+    if_app.flags.is_ph = true;
     if_app.count.HDD_count = HDD_count - 1;
     out_vec.push_back(if_app);
 
@@ -489,6 +541,17 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
                 item.info.name = fmt::format("{} (/HOSTAPP)", getLangSTR(LANG_STR::REMOTE_APP_TITLE));
                 item.info.id = APP_HOME_HOST_TID;
             }
+            else if(fname == WORKSPACE0_TID){
+                item.info.picpath = asset_path("workspace0.png");
+                item.info.name = "(Experimental) FG Games";
+                item.info.id = WORKSPACE0_TID;
+            }
+            else
+            {
+                item.info.picpath = no_icon_path;
+                item.info.name = "ItemzCore";
+                item.info.id = "ITEM00001";
+            }
 
             item.info.version = "0.00";
             item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CATEGORY", "gde"));
@@ -580,6 +643,9 @@ void index_items_from_dir(ThreadSafeVector<item_t> &out_vec, std::string dirpath
         //log_info("added %s, cat: %s", fname.c_str(), item.extra_data.extra_sfo_data["CATEGORY"].c_str());
         out_vec.push_back(item);
     }
+#if defined(__ORBIS__)
+    log_info("Vapps available: %d", retrieveFVapps(out_vec, category, favorites));
+#endif
 
     // Skip one cover to only show it
     // place holder games
@@ -761,4 +827,297 @@ int get_folder_size(const char *file_path, u64 *size) {
 	*size = stat_buf.st_size;
 
 	return 0;
+}
+#if defined(__ORBIS__)
+
+bool overwrite_all = false;
+bool asked_to_ow = false;
+bool action_called = false;
+
+bool file_action(std::string src, std::string dst, bool silent) {
+    std::string src_p = src;
+loop:
+    if (custom_Confirmation_Msg(fmt::format("{} has failed to copy", src), "Other Options", "Retry Copy") == 2) {
+        if (!copyFile(src, dst, silent ? false : true)) {
+            goto loop;
+        }
+        else {
+            return true;
+        }
+    }
+    else {
+        if (custom_Confirmation_Msg(fmt::format("{} has failed to copy", src), "Ignore", "Cancel") == 2) {
+            action_called = true;
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+    action_called = true;
+    return false;
+}
+bool copy_dir(const char* sourcedir, const char* destdir, bool silent) {
+
+    if (action_called) {
+        log_error("user asked to cancel");
+        return false;
+    }
+
+    log_info("s: %s d: %s", sourcedir, destdir);
+    DIR* dir = opendir(sourcedir);
+    if(!dir) {
+		log_info("cannot open sourcedir");
+		return false;
+	}
+
+    struct dirent* dp;
+    struct stat info;
+    char src_path[1024];
+    char dst_path[1024];
+
+    if (!dir) {
+        log_info("cannot open destdir");
+        action_called = true;
+        return false;
+    }
+    mkdir(destdir, 0777);
+    while ((dp = readdir(dir)) != NULL) {
+        if (strstr(dp->d_name, "save.ini") != NULL)
+            log_info("Save.ini file skipped...");
+        else if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")
+            || strstr(dp->d_name, "nobackup") != NULL) {
+            continue;
+        }
+        else {
+            snprintf(src_path, sizeof(src_path)-1, "%s/%s", sourcedir, dp->d_name);
+            snprintf(dst_path, sizeof(dst_path)-1, "%s/%s", destdir, dp->d_name);
+
+            if (!stat(src_path, &info)) {
+                if (S_ISDIR(info.st_mode)) {
+                    copy_dir(src_path, dst_path, silent);
+                }
+                else if (S_ISREG(info.st_mode)) {
+
+                    if (!asked_to_ow) {
+                        if (!silent &&  Confirmation_Msg("Would you like to overwrite ALL existing files?") == YES)
+                        {
+                            overwrite_all = true;
+                        }
+                        asked_to_ow = true;
+                    }
+
+                    // Skip if file already exists in destination
+                    struct stat dst_info;
+                    if (!stat(dst_path, &dst_info)) {
+                        if (!overwrite_all) {
+                            continue;
+                        }
+                    }
+
+                    // Skip if file size is less than 100 MB
+                    if (info.st_size < 100 * 1024 * 1024) {
+                        if (!copyFile(src_path, dst_path, false)) {
+                            return file_action(src_path, dst_path, silent);
+                        }
+                        else {
+                            continue;
+                        }
+                    }
+
+                    if (!copyFile(src_path, dst_path, silent ? false : true)) {
+                        return file_action(src_path, dst_path, silent);
+                    }
+                }
+
+            }
+        }
+    }
+    closedir(dir);
+
+    return true;
+}
+
+void chmod_recursive(const char* path, mode_t mode) {
+    struct stat st;
+
+    if (stat(path, &st) != 0) {
+        log_info("Error accessing file/directory: %s | error %s", path, strerror(errno));
+        return;
+    }
+
+    if (S_ISDIR(st.st_mode)) {
+        // If it's a directory, apply chmod and recursively call on its contents
+        if (chmod(path, mode) != 0) {
+            log_info("Error changing permissions for directory: %s", path);
+            return;
+        }
+
+        DIR* dir = opendir(path);
+        if (dir == nullptr) {
+            log_error("Error opening directory: %s", path);
+            return;
+        }
+
+        dirent* entry = nullptr;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                // Ignore "." and ".." entries
+                if (entry->d_type == DT_DIR) {
+                    char childPath[PATH_MAX];
+                    snprintf(childPath, PATH_MAX, "%s/%s", path, entry->d_name);
+                    chmod_recursive(childPath, mode);
+                }
+            }
+        }
+
+        closedir(dir);
+    }
+    else if (S_ISREG(st.st_mode)) {
+        // If it's a regular file, apply chmod
+        if (chmod(path, mode) != 0) {
+            log_info("Error changing permissions for file: %s", path);
+            return;
+        }
+    }
+}
+
+
+bool copyFolder(const char* src, const char* dest, long size, long *bytes_done, bool move) {
+    DIR* dir;
+    struct dirent* entry;
+    struct stat statBuf;
+
+    std::string dir_size = src;
+    if ((dir = opendir(src)) == NULL) {
+        perror("Error opening source directory");
+        return false;
+    }
+
+    if (stat(dest, &statBuf) == -1) {
+        mkdir(dest, 0700); // Create destination directory if it doesn't exist
+    }
+
+    if (action_called) {
+        log_error("user asked to cancel");
+        return false;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue; // Skip current and parent directories
+        }
+
+        char srcPath[PATH_MAX];
+        char destPath[PATH_MAX];
+
+        snprintf(srcPath, sizeof(srcPath), "%s/%s", src, entry->d_name);
+        snprintf(destPath, sizeof(destPath), "%s/%s", dest, entry->d_name);
+
+        if (stat(srcPath, &statBuf) == -1) {
+            perror("Error getting file status");
+            log_error("Error getting file status for %s", srcPath);
+            closedir(dir);
+            return file_action(srcPath, destPath, false);
+        }
+
+        if (S_ISDIR(statBuf.st_mode)) {
+            copyFolder(srcPath, destPath, size, bytes_done, move); // Recursive call for subdirectories
+        }
+        else {
+           
+            std::string in = srcPath;
+            std::vector<char> buffer(MB(10));
+            size_t bytes = 0;
+
+            int src = sceKernelOpen(srcPath, 0x0000, 0);
+            if (src < 0) {
+                return file_action(in, destPath, false);
+            }
+
+            int out_file = sceKernelOpen(destPath, 0x0001 | 0x0200 | 0x0400, 0777);
+            if (out_file < 0) {
+                return file_action(in, destPath, false);
+            }
+
+            if (buffer.size() > 0)
+            {
+                while (0 < (bytes = sceKernelRead(src, &buffer[0], MB(10)))) {
+
+                    sceKernelWrite(out_file, &buffer[0], bytes);
+                    *bytes_done += bytes;
+                    int status = sceMsgDialogUpdateStatus();
+                    if (ORBIS_COMMON_DIALOG_STATUS_RUNNING == status) {
+                        std::string buf = fmt::format("{}...\nFolder Size: {}\nCurrent file: {}\nDestination Folder: {}", move ? "Moving Folder" : "Copying Folder", calculateSize(size), srcPath, dest);
+                        sceMsgDialogProgressBarSetValue(0, (*bytes_done * 100.0) / size);
+                        sceMsgDialogProgressBarSetMsg(0, buf.c_str());
+                    }
+                }
+            }
+
+            buffer.clear();
+
+            close(src);
+            close(out_file);
+            chmod(destPath, 0777);
+
+            if (move) {
+                unlink(srcPath);
+            }
+        }
+
+        // Calculate and display overall copy percentage
+       // printf("Overall copy percentage: %.2f%%\n", ((float)ftell(stdout) / (float)statBuf.st_size) * 100);
+        //sceMsgDialogProgressBarSetMsg(((float)ftell(stdout) / (float)statBuf.st_size) * 100, "Copying Folder...");
+    }
+
+    closedir(dir);
+
+    return true;
+}
+#endif
+bool StartAppIOOP(const char* src,
+    const char* dest, bool move) {
+    struct statfs s;
+    std::string dir_size = src;
+#if defined(__ORBIS__)
+    progstart(move ? "Starting folder move ...\nCalculating Folder Size ...\n(This may take many mins and will remain at %0)" : "Starting folder copy ...\nCalculating Folder Size ...\n(This may take many mins and will remain at %0)");
+    if (!if_exists(src) || statfs(src, &s) != 0) {
+        msgok(MSG_DIALOG::WARNING, "Failed to get the folder size");
+        return false;
+    }
+    uint64_t totalSize = s.f_bfree * s.f_bsize;
+    if (totalSize <= 0) {
+        log_error("Error calculating folder size, size reported %llx", totalSize);
+        return false;
+    }
+
+    if (statfs(dest, &s) != 0)
+    {
+        //log_error("df cannot open %s", dest);
+        msgok(MSG_DIALOG::WARNING, "Failed to get the folder size");
+        return false;
+    }
+
+    // Calculate free space in bytes
+    long long free_space = s.f_bsize * s.f_bavail;
+    log_info("Free space: %lld bytes | required space %lld bytes", free_space, totalSize);
+
+    if (free_space < totalSize) {
+        log_error("Not enough free space");
+        msgok(MSG_DIALOG::WARNING, fmt::format("Not enough free space\n\nRequired: {}\nAvailable: {}", calculateSize(totalSize), calculateSize(free_space)));
+        return false;
+    }
+
+    long copiedSoFar = 0;
+    mkdir(dest, 0777);
+    bool ret = copyFolder(src, dest, totalSize, &copiedSoFar, move);
+    if (move) {
+        rmtree(src);
+    }
+
+    return ret;
+    #else
+    return true;
+    #endif
 }

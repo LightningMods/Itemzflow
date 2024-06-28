@@ -312,7 +312,7 @@ bool load_data_table(FILE* file) {
 }
 
 // Returns a parameter's index table position
-int get_index(char* key) {
+int get_index(const char* key) {
     for (int i = 0; i < header.entries_count; i++) {
         if (strcmp(key, &key_table.content[entries[i].key_offset]) == 0) {
             return i;
@@ -321,7 +321,77 @@ int get_index(char* key) {
     return -1;
 }
 
-void sfo_mem_to_file(char *file_name) {
+// Replacement for realloc() that exits on error
+static inline void *_realloc(void *ptr, unsigned int size) {
+  if (size == 0) { // Avoid double free (which is implementation-dependant)
+    if (ptr) free(ptr);
+    ptr = NULL;
+  } 
+  return ptr;
+}
+
+// Resizes the data table, starting at specified offset
+void expand_data_table(int offset, int additional_size) {
+  data_table.size += additional_size;
+  data_table.content = (char*)_realloc(data_table.content, data_table.size);
+  // Move higher indexed data to make room for new data
+  for (int i = data_table.size - 1; i >= offset + additional_size; i--) {
+    data_table.content[i] = data_table.content[i - additional_size];
+  }
+  // Set new memory to zero
+  memset(&data_table.content[offset], 0, additional_size);
+}
+
+// Edits a parameter in memory
+void edit_param(const char *key, const char *value) {
+  int diff = -1;
+  int index = get_index(key);
+  if (index < 0) { // Parameter not found
+    log_error("[SFO] Parameter \"%s\" not found.", key);
+    return;
+  }
+
+  switch (entries[index].param_fmt) {
+    case 516: // String
+    case 1024: // Special mode string
+      entries[index].param_len = strlen(value) + 1;
+      // Enlarge data table if new string is longer than allowed
+      diff = entries[index].param_len - entries[index].param_max_len;
+      if (diff > 0) {
+        int offset = entries[index].data_offset + entries[index].param_max_len;
+        entries[index].param_max_len = entries[index].param_len;
+
+        // 4-byte alignment
+        while (entries[index].param_max_len % 4) {
+          entries[index].param_max_len++;
+          diff++;
+        }
+
+        expand_data_table(offset, diff);
+
+        // Adjust follow-up index table entries' data offsets
+        for (int i = index + 1; i < header.entries_count; i++) {
+          entries[i].data_offset += diff;
+        }
+      }
+      // Overwrite old data with zeros
+      memset(&data_table.content[entries[index].data_offset], 0,
+        entries[index].param_max_len);
+      // Save new string to data table
+      snprintf(&data_table.content[entries[index].data_offset],
+        entries[index].param_max_len, "%s", value);
+      break;
+    case 1028: // Integer
+      ;
+      uint32_t integer = strtoul(value, NULL, 0);
+      log_info("[SFO] Integer: %u", integer);
+      memcpy(&data_table.content[entries[index].data_offset], &integer, 4);
+      break;
+  }
+}
+
+
+void sfo_mem_to_file(const char *file_name) {
   FILE *file = fopen(file_name, "wb");
   if (file == NULL) {
     log_error("[SFO] Could not open file \"%s\" for writing.", file_name);
@@ -387,7 +457,7 @@ bool extract_sfo_from_pkg(const char* pkg, const char* outdir){
 
     fclose(file);
     
-    sfo_mem_to_file((char*)outdir);
+    sfo_mem_to_file(outdir);
 
     if (entries) free(entries);
     if (key_table.content) free(key_table.content);
@@ -395,3 +465,48 @@ bool extract_sfo_from_pkg(const char* pkg, const char* outdir){
 
     return true;
 }
+
+bool modify_sfo(const char* sfo,  const char* key, const char* value ){
+    // CAUTION! This function assumes you checked the pkg magic already
+    FILE* file = fopen(sfo, "rb"); // TODO: use Open for both next
+    if (file == NULL) {
+        log_error("Could not open file %s", sfo);
+        return false;
+    }
+
+    // Load file contents
+    if(!load_header(file)){
+        log_error("Could not load header");
+        fclose(file);
+        return false;
+    }
+    if(!load_entries(file)){
+        log_error("Could not load entries table");
+        fclose(file);
+        return false;
+    }
+     if(!load_key_table(file)){
+        log_error("Could not load data table");
+        fclose(file);
+        return false;
+    }
+    if(!load_data_table(file)){
+        log_error("Could not load data table");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+
+    edit_param(key, value);
+    
+    sfo_mem_to_file(sfo);
+
+    if (entries) free(entries);
+    if (key_table.content) free(key_table.content);
+    if (data_table.content) free(data_table.content);
+
+    log_info("SFO file modified successfully!");
+    return true;
+}
+

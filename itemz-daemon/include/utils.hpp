@@ -321,7 +321,7 @@ void* syscall1(
 	uint64_t number,
 	void* arg1
 );
-
+void* fuse_startup(void* arg);
 void* syscall2(
 	uint64_t number,
 	void* arg1,

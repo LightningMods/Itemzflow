@@ -58,35 +58,20 @@ GLuint load_png_asset_into_texture(const char* relative_path)
     return tex;
 }
 
-unsigned char* load_png_asset(const char* relative_path, std::atomic<bool> &is_loaded, struct AppIcon::ImageData& data)
-{  
-    //std::lock_guard<std::mutex> lock(data.data_mutex);
-
-    unsigned char* image = stbi_load(relative_path, &data.w, &data.h, &data.comp, STBI_rgb_alpha);
-    if(image == nullptr){
-        log_debug( "%s(%s) FAILED!", __FUNCTION__, relative_path);
-        return 0;
-    }
-    is_loaded = true;
-    //log_info("returning data for %s", relative_path);
-
-    return image;
-}
-
 void load_png_cover_data_into_texture(struct AppIcon::ImageData& data, std::atomic<bool>& needs_loaded, std::atomic<GLuint>& tex)
 {
-   // std::lock_guard<std::mutex> lock(data.data_mutex);
-
     if (!data.data) {
-        log_debug("%s(%p) FAILED!", __FUNCTION__, data.data);
+        log_debug("%s(%p) FAILED!", __FUNCTION__, data.data.get());
         return;
     }
 
-    tex = load_texture(data.w, data.h, data.comp, data.data);
-    log_info("loaded %s(%p) as %d", __FUNCTION__, data.data, tex.load());
-    stbi_image_free(data.data), data.data = nullptr;
+    tex = load_texture(data.w, data.h, data.comp, data.data.get());
+    log_info("loaded %s(%p) as %d", __FUNCTION__, data.data.get(), tex.load());
+
+    data.data.reset();  // Release the unique_ptr, freeing the memory
     needs_loaded = false;
 }
+
 GLuint load_png_data_into_texture(const char* data, int size)
 {
     int w = 0, h = 0, comp = 0;

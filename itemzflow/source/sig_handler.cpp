@@ -23,7 +23,7 @@
 #include <sys/types.h>
 #include <utils.h>
 
-
+extern bool is_remote_va_launched;
 static size_t WriteCallback(void *contents, size_t size, size_t nmemb,
                             void *userp) {
   ((std::string *)userp)->append((char *)contents, size * nmemb);
@@ -270,6 +270,7 @@ bool Dump_w_opts(std::string tid, std::string d_p, std::string gtitle,
     options.opt = REMASTER;
     return Dumper(options);
   } else if (dump == SEL_DLC) {
+    options.opt = ADDITIONAL_CONTENT_DATA;
     return Dumper(options);
   }
 
@@ -362,8 +363,8 @@ bool is_dumper_running = false;
 void SIG_Handler(int sig_numb) {
   std::string profpath;
   IPC_Client &ipc = IPC_Client::getInstance();
-  rejail_multi =
-      (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "rejail_multi");
+ // rejail_multi =
+  //    (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "rejail_multi");
   int fw = (ps4_fw_version() >> 16);
   // void* bt_array[255];
   //
@@ -379,6 +380,7 @@ void SIG_Handler(int sig_numb) {
     log_debug("SIGINT called");
     break;
   case SIGQUIT:
+    unmount_atexit();
     Exit_Success("SIGQUIT Called");
     break;
   case SIGKILL:
@@ -415,6 +417,7 @@ void SIG_Handler(int sig_numb) {
   }
 
 backtrace_and_exit:
+  unmount_atexit();
   log_debug("backtrace_and_exit called");
   ipc.IPCSendCommand(IPC_Commands::DISABLE_HOME_REDIRECT, ipc_msg);
 
@@ -493,16 +496,9 @@ App_Resumed:
       log_info("[SIGNAL] No Open Games detected");
   }
 
-  if (is_dumper_running) {
-    msgok(MSG_DIALOG::NORMAL, getLangSTR(LANG_STR::DUMPER_CANCELLED));
-    dump = SEL_RESET;
-    is_dumper_running = false;
-    return;
-  }
-
   //  char* title_id.get() = "CUSA02290";
-  if (dump == SEL_RESET) {
-    log_info("[SIGNAL] Dumper not active");
+  if (dump == SEL_RESET || is_dumper_running) {
+    log_info("[SIGNAL] Dumper not active OR is already active");
     return;
   }
   is_dumper_running = true;

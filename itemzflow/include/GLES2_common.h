@@ -10,11 +10,13 @@
 #ifdef __ORBIS__
 #include <user_mem.h>
 #endif
-#include <vector>
-#include <string>
-#include <memory>
-#include <mutex>
+#include "stb_image.h"
 #include <atomic>
+#include <memory>
+#include "log.h"
+#include <mutex>
+#include <string>
+
 
 typedef enum vbo_status
 {
@@ -32,97 +34,89 @@ struct multi_t
     ivec4 pos = (ivec4){0, 0, 0, 0};
     bool is_active = false;
 };
+struct STBIImageDeleter {
+  void operator()(unsigned char *ptr) const { stbi_image_free(ptr); }
+};
 
 
 struct AppIcon {
   struct ImageData {
-    unsigned char* data = nullptr;
-    int w = 0, h = 0, comp= 0;
-    //mutable std::mutex data_mutex; // Mutable to allow locking in const functions
-    ImageData(){
+    std::unique_ptr<unsigned char, STBIImageDeleter> data = nullptr;
+    int w = 0, h = 0, comp = 0;
 
+    ImageData() = default;
+
+    ImageData(const ImageData &other)
+        : w(other.w), h(other.h), comp(other.comp) {
+      if (other.data) {
+        data.reset();
+      }
     }
 
-    ImageData(const ImageData& other) {
-        //std::lock_guard<std::mutex> lock(other.data_mutex);
+    ImageData &operator=(const ImageData &other) {
+      if (this != &other) {
         w = other.w;
         h = other.h;
         comp = other.comp;
-        // Perform deep copy of data if needed
+
         if (other.data) {
-            data = other.data;
+           data.reset();
         }
+      }
+      return *this;
     }
 
-   ImageData& operator=(const ImageData& other) {
-        if (this != &other) {
-          //  std::unique_lock<std::mutex> lock1(data_mutex, std::defer_lock);
-            //std::unique_lock<std::mutex> lock2(other.data_mutex, std::defer_lock);
-            //std::lock(lock1, lock2);
+    ~ImageData() = default;
 
-            w = other.w;
-            h = other.h;
-            comp = other.comp;
+    void load(const char *filepath, std::atomic<bool> &is_loaded) {
+     // data = load_png_asset(filepath, is_loaded, *this);
+      unsigned char *image =  stbi_load(filepath, &w, &h, &comp, STBI_rgb_alpha);
+      if (image == nullptr) {
+        log_debug("%s(%s) FAILED!", __FUNCTION__, filepath);
+        return;
+      }
+      is_loaded = true;
+      data = std::unique_ptr<unsigned char, STBIImageDeleter>(image);
+    }
+  };
 
-            if (other.data) {
-                data = other.data;
-            } else {
-                data = nullptr;
-            }
-        }
-        return *this;
+  std::atomic<GLuint> texture; // The item icon
+  vec4 uv;                     // Normalized p1, p2
+  std::atomic<bool> cover_exists, turn_into_texture;
+  ImageData image_data;
+
+  AppIcon() : texture(0), cover_exists(false), turn_into_texture(false) {
+    uv = {0, 0, 0, 0};
+    image_data = ImageData(); // Default construct image_data
+  }
+
+  // Custom copy constructor
+  AppIcon(const AppIcon &other)
+      : texture(other.texture.load()), uv(other.uv),
+        cover_exists(other.cover_exists.load()),
+        turn_into_texture(other.turn_into_texture.load()),
+        image_data(other.image_data) {}
+
+  // Custom copy assignment operator
+  AppIcon &operator=(const AppIcon &other) {
+    if (this == &other) {
+      return *this;
     }
 
-    ~ImageData() {
-       // delete[] data;
-    }
-};
-    std::atomic<GLuint> texture; // The item icon
-    vec4 uv; // Normalized p1, p2
-    std::atomic<bool> cover_exists, turn_into_texture;
-    ImageData image_data;
+    texture = other.texture.load();
+    uv = other.uv;
+    cover_exists = other.cover_exists.load();
+    turn_into_texture = other.turn_into_texture.load();
+    image_data = other.image_data;
 
-
-    AppIcon() : texture(0), cover_exists(false), turn_into_texture(false)
-    {
-        uv = {0, 0, 0, 0};
-        image_data = ImageData(); // Default construct image_data
-    }
-
-    // Custom copy constructor
-    AppIcon(const AppIcon& other) : texture(other.texture.load()),
-                                   uv(other.uv),
-                                   cover_exists(other.cover_exists.load()),
-                                   turn_into_texture(other.turn_into_texture.load())
-                                   {
-       // std::lock_guard<std::mutex> lock(other.image_data.data_mutex);
-        image_data = other.image_data;
-                                   }
-
-    // Custom copy assignment operator
-    AppIcon& operator=(const AppIcon& other) {
-        if (this == &other) {
-            return *this;
-        }
-
-        texture = other.texture.load();
-        uv = other.uv;
-        cover_exists = other.cover_exists.load();
-        turn_into_texture = other.turn_into_texture.load();
-
-       // std::lock(image_data.data_mutex, other.image_data.data_mutex);
-        //std::lock_guard<std::mutex> lock1(image_data.data_mutex, std::adopt_lock);
-        //std::lock_guard<std::mutex> lock2(other.image_data.data_mutex, std::adopt_lock);
-
-        image_data = other.image_data;
-
-        return *this;
-    }
+    return *this;
+  }
 };
 
 struct ItemFlags {
     bool is_ext_hdd = false;
     bool is_fpkg = true;
+    bool usbvapp_not_found = false;
     bool is_vapp = false;
     bool is_dumpable = false;
     bool app_vis = true;
@@ -139,6 +133,7 @@ struct ItemData {
     std::string version;
     std::string picpath;
     std::string sfopath;
+    std::string vapp_path;
 };
 
 struct ItemCount {
@@ -316,6 +311,12 @@ typedef enum {
 } Uninstall_Multi_Sel;
 
 typedef enum {
+    MOVE_DIR = 0,
+    COPY_DIR,
+    DELETE_DIR,
+} IO_Options;
+
+typedef enum {
     SHELLUI_SETTINGS_MENU = 0,
     SHELLUI_POWER_SAVE
 } ShellUI_Multi_Sel;
@@ -348,6 +349,13 @@ typedef enum {
 
 #define FIRST_MULTI_LINE 1
 #define RESET_MULTI_SEL 0
+
+
+typedef struct {
+    const char* label; // Label to be emphasized
+    std::string value; // Value to display
+    float x, y;        // Position
+} TextInfo;
 
 namespace NOTIFI{
 typedef enum {
@@ -449,7 +457,29 @@ typedef enum
 } HOSTAPP_OPTS;
 
 
+typedef enum
+{
+    LAUNCH_USBVAPP,
+    CHANGE_DIR_USBVAPP,
+    COPY_DIR_LOCAL_HA,
+    OVERRIDE_TID,
+    SCAN_FOR_APPS,
+
+} USBVAPP_OPTS;
+
+typedef enum
+{
+    LAUNCH_VAPP,
+    IO_Options,
+    REMOVE_VAPP,
+    SHOW_APP_INFO,
+
+} VAPP_OPTS;
+
+
 };
+
+std::string getFolderName(const std::string &fullPath);
 
 // menu entry strings
 #define  LPANEL_Y  (5)
@@ -484,8 +514,7 @@ typedef enum
 #define L2   ( 12)
 #endif
 
-
-extern GLuint fallback_t;
+    extern GLuint fallback_t;
 
 // for Settings (options_panel)
 extern bool use_reflection,

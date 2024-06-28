@@ -269,25 +269,27 @@ enum bool_settings
     has_image,
     cover_message,
     INTERNAL_UPDATE,
+    BACKGROUND_INSTALL,
     NUMB_OF_BOOLS
 
 };
 
-enum string_settings
-{
-    CDN_URL,
-    DUMPER_PATH,
-    MP3_PATH,
-    INI_PATH,
-    FNT_PATH,
-    NUM_OF_STRINGS,
-    SB_PATH,
-    IMAGE_PATH,
-    THEME_NAME,
-    THEME_AUTHOR,
-    THEME_VERSION,
-    FUSE_PC_NFS_IP,
-    NUMB_OF_STRINGS
+enum string_settings {
+  CDN_URL,
+  DUMPER_PATH,
+  MP3_PATH,
+  INI_PATH,
+  FNT_PATH,
+  NUM_OF_STRINGS,
+  SB_PATH,
+  IMAGE_PATH,
+  THEME_NAME,
+  THEME_AUTHOR,
+  THEME_VERSION,
+  FUSE_PC_NFS_IP,
+  USBAPP_OVERRIDE_TID,
+  USBVAPP_PATH,
+  NUMB_OF_STRINGS
 };
 
 // indexed options
@@ -308,7 +310,7 @@ typedef struct
 
 #define IS_DISC_GAME 0x80990087
 #define MIN_NUMBER_OF_IF_APPS 6
-
+void get_memory_usage();
 
 // the Settings
 extern ItemzSettings set,
@@ -419,16 +421,16 @@ typedef enum
     FS_MP3_ONLY,
 
 } FS_FILTER;
-
-typedef struct
-{
-    layout_t * last_layout;
-    int (*fs_func)(std::string file, std::string full_path);
-    std::string selected_file, selected_full_path;
-    view_t last_v;
-    FILE_STATE status;
-    FS_FILTER filter;
-} fs_res;
+struct fs_res {
+  layout_t *last_layout = nullptr;
+  int (*fs_func)(const std::string file, const std::string full_path) = nullptr;
+  std::string selected_file, selected_full_path;
+  view_t last_v = RANDOM;
+  FILE_STATE status = FS_NOT_STARTED;
+  FS_FILTER filter;
+  int curr_opt = -1;
+  int sub_opt = -1;
+};
 
 extern int v_curr;
 extern fs_res fs_ret;
@@ -559,7 +561,8 @@ void Stop_Music();
 void rebuild_dlc_db();
 void rebuild_db();
 bool extract_sfo_from_pkg(const char* pkg, const char* outdir);
-
+bool ForceUnmountVapp(std::string syspath);
+void unmount_atexit();
 enum NotifyType
 {
 	NotificationRequest = 0,
@@ -684,9 +687,23 @@ bool copyFile(std::string source, std::string dest, bool show_progress);
 void ProgSetMessagewText(int prog, const char* fmt, ...);
 bool rmtree(const char path[]);
 void scan_for_disc();
-unsigned char* load_png_asset(const char* relative_path, std::atomic<bool> &is_loaded, struct AppIcon::ImageData& data);
 uint32_t installPatchPKG(const char *url, const char *title_id);
 void load_png_cover_data_into_texture(struct AppIcon::ImageData& data, std::atomic<bool>& needs_loaded, std::atomic<GLuint>& tex);
 void ProgressUpdate(uint32_t prog, std::string fmt);
 void upload_crash_log(bool is_try_recovery = false);
 #define UNUSED(x) (void)X
+bool remount(const char *dev, const char *path);
+bool GetVappDetails(item_t &item);
+int retrieveFVapps(ThreadSafeVector<item_t>& out_vec, Sort_Category category, Favorites &favs);
+bool EditDataIFPS5DB(const std::string& tidValue, const std::string& title,const std::string& gmPathValue, bool delete_record = false);
+bool ForceUnmountVapp(std::string syspath);
+bool Inject_SQL_app(const std::string& tidValue, const std::string& sys_path, const std::string& contentID, const std::string& AppTitle);
+bool StartAppIOOP(const char* src, const char* dest, bool move = false);
+bool ScanForVapps();
+bool getSfoDetails(std::string path, std::string &titleID, std::string &contentID, std::string &AppTitle);
+int custom_Confirmation_Msg(std::string msg, std::string msg1, std::string msg2);
+bool checkTrophyMagic(const std::string &trophy);
+bool ChechSelfsinDir(const std::string& directory);
+bool checkSELFMagic(const std::string &ebootPath);
+bool modify_sfo(const char* sfo,  const char* key, const char* value );
+void UpdateParamSfo(std::string path);

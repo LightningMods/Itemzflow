@@ -142,12 +142,11 @@ int copyFile(const char* sourcefile, const char* destfile)
 		sceKernelClose(src);
 		return 0;
 	}
-	else
-	{
-		logshit("[ELFLOADER] fuxking error");
-        logshit("[Itemz-loader:%s:%i] ----- src fd = %i---", __FUNCTION__, __LINE__, src);
-		return -1;
-	}
+
+	logshit("[ELFLOADER] fuxking error");
+    logshit("[Itemz-loader:%s:%i] ----- src fd = %i---", __FUNCTION__, __LINE__, src);
+
+	return -1;
 }
 
 bool if_exists(const char* path)
@@ -162,6 +161,16 @@ bool if_exists(const char* path)
 
 
 	return true;
+}
+
+bool touch_file(const char *destfile) {
+  int fd = open(destfile, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+  if (fd > 0) {
+    unlink(destfile);
+    close(fd);
+    return true;
+  } else
+    return false;
 }
 
 void init_itemzGL_modules()
@@ -184,7 +193,12 @@ void init_itemzGL_modules()
 void (*jbc_run_as_root)(void(*fn)(void* arg), void* arg, int cwd_mode);
 
 void loader_rooted(void *arg){
-	if(if_exists("/usb0/recovery.flag") || if_exists("/user/recovery.flag")){
+	logshit("After jb");
+	mkdir("/user/app/ITEM00001/storedata/", 0777);
+	mkdir("/user/app/ITEM00001/logs/", 0777);
+	unlink("/user/app/ITEM00001/logs/loader.log");
+
+	if(if_exists("/mnt/usb0/recovery.flag") || if_exists("/user/recovery.flag")){
 
 		if(Confirmation_Msg("ItemzLoader Recovery Menu\n\n\nDo you want to Factory reset ItemzFlow??\n\nWarning: ItemzFlow App Stats, Covers, Settings, Updates, Themes and More will be Deleted!") == YES){
 			   //rmtree app.xml app.pkg app.pbm.backup  app.pbm  app.json
@@ -208,8 +222,8 @@ void loader_rooted(void *arg){
 			   rmdir("/user/app/reset");
 
 			   logshit("Factory reset done!");
-			   unlink("/usb0/recovery.flag");
-			   rmdir("/usb0/recovery.flag");
+			   unlink("/mnt/usb0/recovery.flag");
+			   rmdir("/mnt/usb0/recovery.flag");
 			   unlink("/user/recovery.flag");
 			   rmdir("/user/recovery.flag");
 		       msgok("ItemzLoader Recovery Menu\n\n\nItemzFlow has been Factory Reset!\n\nPress OK to exit");
@@ -219,24 +233,30 @@ void loader_rooted(void *arg){
 			else
 			   logshit("ItemzLoader Recovery Canned...");
 
-		    unlink("/usb0/recovery.flag");
-			rmdir("/usb0/recovery.flag");
+		    unlink("/mnt/usb0/recovery.flag");
+			rmdir("/mnt/usb0/recovery.flag");
 			unlink("/user/recovery.flag");
 			rmdir("/user/recovery.flag");
 	}
 
-	logshit("After jb");
-	mkdir("/user/app/ITEM00001/storedata/", 0777);
-	mkdir("/user/app/ITEM00001/logs/", 0777);
-
-	unlink("/user/app/ITEM00001/logs/loader.log");
+    if(!touch_file("/system_ex/.test")){
+	   if (!!mountfs("/dev/da0x5.crypt", "/system_ex", "exfatfs", "511", MNT_UPDATE))
+       {
+           logshit("mounting /system_ex failed with %s.", strerror(errno));
+           return;
+       }
+	   logshit("/system_ex mount successful");
+    }
+	else{
+		logshit("remount not needed, skipping");
+	}
 
 	logshit("[Itemz-loader:%s:%i] -----  All Internal Modules Loaded  -----", __FUNCTION__, __LINE__);
 	logshit("------------------------ Itemz Loader[GL] Compiled Time: %s @ %s EST -------------------------", __DATE__, __TIME__);
 	logshit("[Itemz-loader:%s:%i] -----  Itemz-Loader Version: %s  -----", __FUNCTION__, __LINE__, completeVersion);
 	logshit("----------------------------------------------- -------------------------");
 
- 	if (if_exists("/usb0/settings.ini"))
+ 	if (if_exists("/mnt/usb0/settings.ini"))
 		logshit("[Itemz-loader:%s:%i] ----- FOUND USB RECOVERY INI ---", __FUNCTION__, __LINE__);
 	else
 	{

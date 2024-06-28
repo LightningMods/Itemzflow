@@ -1373,7 +1373,7 @@ template <typename OutputIt, typename Char> class tm_writer {
 };
 
 struct chrono_format_checker : null_chrono_spec_handler<chrono_format_checker> {
-  FMT_NORETURN void unsupported() { log_error("no date"); raise(SIGUSR2); throw std::runtime_error("no date"); }
+  FMT_NORETURN void unsupported() { log_error("no date"); raise(SIGABRT); }
 
   template <typename Char>
   FMT_CONSTEXPR void on_text(const Char*, const Char*) {}

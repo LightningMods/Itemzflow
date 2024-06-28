@@ -180,11 +180,12 @@ void GLES2_Draw_sysinfo(bool is_idle)
         return;
         }
         /* get systime */
-        time_t     t  = time(NULL);
+        time_t t = time(NULL);
         struct tm *tm = localtime(&t);
-        char s[65];
-        strftime(s, sizeof(s), "%A, %B %e %Y, %H:%M", tm); // custom date string
-//      log_info("%s", s);
+        char s[120];
+
+        strftime(s, sizeof(s), "%A, %B %e %Y, %I:%M %p", tm);
+        //      log_info("%s", s);
         tmp = s;
         // we need to know Text_Length_in_px in advance, so we call this:
         texture_font_load_glyphs( sub_font, tmp.c_str() );

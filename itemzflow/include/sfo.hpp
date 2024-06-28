@@ -71,8 +71,6 @@ public:
 		setData(&sfoData[0], sfoData.size());
 	}
 
-
-
 	template<typename T>
 	inline T operator[](SfoEntry* e)
 	{

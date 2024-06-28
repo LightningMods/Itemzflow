@@ -22,6 +22,31 @@
 
 std::mutex ipc_mutex;
 
+void* fuse_startup(void* arg){
+	std::ifstream file("/data/itemzflow_daemon/fuse_ip.txt");
+    if (!file.is_open()) {
+		log_error("[FUSE SESSION] Failed to open fuse_ip.txt");
+        return nullptr;
+    }
+
+    std::getline(file, fuse_session_ip);
+
+	if(fuse_session_ip.size() > 3){	  
+    	log_info(" Starting FUSE Thread IP %s", fuse_session_ip.c_str());
+    	if(initialize_userland_fuse("/hostapp", fuse_session_ip.c_str()) == NO_ERROR){
+     		log_info(" FUSE Thread Started!");
+      		notify("Connected to Network Share!");
+    	}
+    	else{
+	  		log_error("FUSE Thread Failed to Start!");
+     		notify("Failed to connect to Network Share!");
+    	}
+
+  	    fuse_session_ip.clear();
+    }
+	return nullptr;
+}
+
 void load_fuse_ip() {
     std::ifstream file("/data/itemzflow_daemon/fuse_ip.txt");
     if (!file.is_open()) {

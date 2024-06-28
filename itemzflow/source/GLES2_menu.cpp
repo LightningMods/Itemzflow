@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-GLuint ic = GL_NULL;
+GLuint ic = GL_NULL, incomp_icon = GL_NULL;
 extern VertexBuffer title_vbo, test_v;
 extern bool skipped_first_X;
     // the Settings
@@ -62,6 +62,8 @@ extern struct _trainer_struct trs;
 #endif
 
 std::string old_tid;
+bool update_is_supported = false;
+extern bool curr_app_not_found;
 
 using namespace multi_select_options;
 void draw_rect(vec4 &color, float x, float y, float w, float h){
@@ -179,6 +181,22 @@ std::string orbis_menu_get_str(ShellUI_Multi_Sel num)
         return "OUT_OF_INDEX_ERROR";
     }
 }
+
+std::string io_ops_get_str(IO_Options num)
+{
+    switch (num)
+    {
+    case MOVE_DIR:
+        return "Move App Folder";
+    case COPY_DIR:
+        return "Copy App Folder";
+    case DELETE_DIR:
+        return "Delete App Folder";
+    default:
+        return "OUT_OF_INDEX_ERROR";
+    }
+}
+
 std::string power_menu_get_str(Power_control_sel num)
 {
     switch (num) {
@@ -319,16 +337,38 @@ std::string rebuild_db_get_str(Rebuild_db_Multi_Sel num)
 //NONE=None
 //NO_TRAINERS=No Trainers Found
 //
+#include <iomanip>
+std::string FWString(int fw) {
+  if (fw <= 0) {
+    return "Unknown";
+  }
+
+  int hexValue = fw >> 16;
+  std::string fw_str = fmt::format("{:X}", hexValue);
+  std::string fw_ret;
+
+  if (hexValue > 0x999) {
+    fw_ret += fw_str.at(0);
+    fw_ret += fw_str.at(1);
+    fw_ret += '.';
+    fw_ret += fw_str.at(2);
+    fw_ret += fw_str.at(3);
+  } else {
+    fw_ret += fw_str.at(0);
+    fw_ret += '.';
+    fw_ret += fw_str.at(1);
+    fw_ret += fw_str.at(2);
+  }
+
+  return fw_ret;
+}
 std::string trainer_get_str(int num)
 {
-#if defined(__ORBIS__)
+
     if(trs.controls_text.empty())
         return "No Trainers Found";
 
     return fmt::format("{0:}", trs.controls_text.at(num));
-#else
-    return std::string();
-#endif
 }
 
 static void print_option_info(layout_t& l, vec2 &pen, std::string line_1, std::string line_2, bool is_settings) {
@@ -360,6 +400,228 @@ static void print_option_info(layout_t& l, vec2 &pen, std::string line_1, std::s
         }
         l.vbo.add_text(sub_font, fmt::format("{0:.80}", line_2), c, info_text);
     }
+}
+std::pair<std::string, std::string> GetBasePathAndFolderName(const std::string& fullPath) {
+    size_t lastSlashPos = fullPath.find_last_of("/\\");
+
+    if (lastSlashPos != std::string::npos) {
+        // Extract the base path
+        std::string basePath = fullPath.substr(0, lastSlashPos);
+        // Extract the folder name
+        std::string folderName = fullPath.substr(lastSlashPos + 1);
+        return { basePath, folderName };
+    }
+    else {
+        // No slash found, so the base path is empty, and the full path is considered a folder name
+        return { "", fullPath };
+    }
+}
+
+/* default way to deal with text, for layout_t */
+static void game_vapp_compose_text(view_t vw, int idx, vec2& pen, bool save_text)
+{
+#if 0
+    log_info("%s %p, %d", __FUNCTION__, l, save_text);
+#endif
+    layout_t& l = getLayoutbyView(vw);
+    std::string tmp = "";
+   // GameStatus app_state = app_status.load();
+
+    vec4 c = col * .75f;
+    // default indexing, item_t* AOS
+    item_t& li = l.item_d[idx];
+
+    if (vw != ITEM_PAGE) return;
+
+    vec2 bk = pen;
+    bk.x += 10,
+        bk.y += 50;
+    vec2 sub_ops = { bk.x, bk.y };
+
+    l.vbo.add_text(sub_font, li.info.name, col, bk);
+
+    /* special option */
+    vec2 tp = pen;
+    switch (idx)
+    {
+    case cf_ops::VAPP_OPTS::LAUNCH_VAPP:
+        break;
+    case cf_ops::IO_Options: {
+        if (!li.multi_sel.is_active) {
+            li.multi_sel.pos = (ivec4){ 0, 0, 0, 3 };
+            li.multi_sel.is_active = true;
+            log_info("$$$$$  multi_sel is active");
+        }
+
+        //set active for all above too
+        //li.multi_sel.is_active = true;
+        if (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE)
+        {
+            // show '< X >' around Option
+            switch (idx) {
+            case cf_ops::IO_Options: {
+                tmp = fmt::format("< {0:.20} >", io_ops_get_str((IO_Options)(li.multi_sel.pos.y)));
+                break;
+            }
+
+            }
+            // compute rectangle position and size in px
+            vec4 r = get_rect_from_index(idx, l, NULL);
+            // start at panel position, move to center
+            tp = pen;
+            tp.x = (l.bound_box.x + r.z / 2.) + 300.;
+            // we need to know Text_Length_in_px in advance, so we call this:
+            texture_font_load_glyphs(main_font, tmp.c_str());
+            tp.x -= tl / 2.;
+            pen = tp;
+        }
+        else
+            tmp = getLangSTR(LANG_STR::SELECT_INTERACT);
+        break;
+
+    case cf_ops::VAPP_OPTS::REMOVE_VAPP: {
+
+        break;
+    }
+
+    case cf_ops::VAPP_OPTS::SHOW_APP_INFO:
+
+        if (!li.multi_sel.is_active)
+        {
+            li.multi_sel.pos = (ivec4){ 0, 0, 0, 1 };
+            li.multi_sel.is_active = true;
+        }
+        if (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE)
+        {
+            item_t item = all_apps[g_idx];
+
+            // Use item details to fill in the text information
+            auto [basePath, folderName] = GetBasePathAndFolderName(item.info.vapp_path);
+            TextInfo textInfo[] = {
+                {"VAPP Path: ", fmt::format("{:.28}{}", item.info.vapp_path, item.info.vapp_path.size() > 28 ? " ..." : ""), 790., 740.},
+                {"Title ID: ", item.info.id, 790., 710.},
+                {"Required SDK Version: ", item.extra_data.extra_sfo_data["SYSTEM_VER"].empty() ? "Unknown" : FWString(std::stoi(item.extra_data.extra_sfo_data["SYSTEM_VER"])), 790., 680.},
+                {"en-US Name: ", fmt::format("{:.28}{}", item.info.name, item.info.name.size() > 28 ? "..." : ""), 790., 650.}, // 650
+                {"version: ", item.info.version, 790., 620.}, // 
+                {"Content ID: ", item.extra_data.extra_sfo_data["CONTENT_ID"], 790., 590.}, // 590
+                {"Param File: ", fmt::format("{:.28}{}", item.info.sfopath, item.info.sfopath.size() > 28 ? "..." : ""), 790., 560.},
+                {"Base Directory: ", basePath, 790., 530.},
+                {"App folder: ", folderName, 790., 500.} //
+            };
+
+            // App Icon that is already loaded, as its in Itemzflow's list
+            ic = item.icon.texture;
+
+            vec4 color = (vec4){ .8164, .8164, .8125, 1. };
+            vec2 pen;
+
+            // Loop through the text elements
+            for (auto info : textInfo) {
+                pen.x = info.x;
+                pen.y = info.y;
+
+                // overlap text to show boldness
+                for (int j = 0; j < 3; j++) { 
+                    pen.x = info.x; // reset positions as 
+                    pen.y = info.y; // they are modified by the add_text function
+                    l.vbo.add_text(main_font, info.label, color, pen);
+                }
+
+                // Add the value next to the label
+                l.vbo.add_text(main_font, info.value, color, pen);
+
+            }
+            tmp = "Hide App Info";
+        }
+        else
+            tmp = getLangSTR(LANG_STR::SELECT_INTERACT);
+        break;
+    }
+    }
+    // log_info("str %s", set.setting_strings[USBVAPP_PATH].c_str());
+
+    if (tmp.size() > 3)
+    {
+        sub_ops.y -= 40;
+        l.vbo.add_text(main_font, tmp, c, sub_ops);
+    }
+
+    if (idx == 0 || (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE))
+    {
+        // print options info
+        switch (l.curr_item)
+        {//RESTORE_NOTICE
+        case cf_ops::VAPP_OPTS::REMOVE_VAPP:
+            print_option_info(l, pen, "Removes the app from the PS4 and Itemzflow menu", "(does not delete folder or files)", false);
+            break;
+        case cf_ops::IO_Options:
+            print_option_info(l, pen, "I/O Options - Move, Copy or Delete the app folder", "", false);
+            // show '< X >' around Option
+            if (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE)
+            {
+                switch (li.multi_sel.pos.y)
+                {
+                case COPY_DIR:
+                    print_option_info(l, pen, "", "Select where to copy the App", false);
+                    break;
+                case MOVE_DIR:
+                    print_option_info(l, pen, "", "Select where to move the APP", false);
+                    break;
+                case DELETE_DIR:
+                    print_option_info(l, pen, "", "Deletes the whole App folder (does not remove vapp)", false);
+                default:
+                    break;
+                }
+            }
+            break;
+            case cf_ops::VAPP_OPTS::SHOW_APP_INFO:
+				print_option_info(l, pen, "Displays the App and other relevant info", "", false);
+				break;
+        default:
+            break;
+        }
+    }
+    return;
+
+}
+
+static void vapp_not_found_compose_text(view_t vw, int idx, vec2& pen, bool save_text)
+{
+#if 0
+    log_info("%s %p, %d", __FUNCTION__, l, save_text);
+#endif
+    layout_t& l = getLayoutbyView(vw);
+   // vec4 c = col * .75f;
+    // default indexing, item_t* AOS
+    item_t& li = l.item_d[idx];
+
+    if (vw != ITEM_PAGE) return;
+
+    vec2 bk = pen;
+    bk.x += 10,
+        bk.y += 50;
+   // vec2 sub_ops = { bk.x, bk.y };
+
+    l.vbo.add_text(sub_font, li.info.name, col, bk);
+
+    /* special option */
+   // vec2 tp = pen;
+    // log_info("str %s", set.setting_strings[USBVAPP_PATH].c_str());
+
+    if (idx == 0 || (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE))
+    {
+        // print options info
+        switch (l.curr_item)
+        {//RESTORE_NOTICE
+        case 1:
+            print_option_info(l, pen, "Removes the app from the PS4 and Itemzflow menu", "(does not delete folder or files)", false);
+            break;
+        default:
+            break;
+        }
+    }
+    return;
+
 }
 /* default way to deal with text, for layout_t */
 static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
@@ -402,7 +664,7 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
         case cf_ops::REG_OPTS::MOVE_APPS:    // 3
         case cf_ops::REG_OPTS::RETAIL_UPDATES: // 3
           if (!li.multi_sel.is_active) {
-            li.multi_sel.pos = (ivec4){0, 0, 0, cf_ops::REG_OPTS::RETAIL_UPDATES ? update_info.update_version.size() : 3};
+            li.multi_sel.pos = (ivec4){0, 0, 0, (idx == cf_ops::REG_OPTS::RETAIL_UPDATES) ? update_info.update_version.size() : 3};
             li.multi_sel.is_active = true;
           }
         case cf_ops::REG_OPTS::TRAINERS:
@@ -492,9 +754,9 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                         l.vbo.add_text( main_font, update_info.update_title, color, pen);
                         // ONLY CONTINUE IF SAVE IS LOADED
                         #if defined(__ORBIS__)
-                        bool is_fpkg = false;
-                        #else
                         bool is_fpkg = all_apps[g_idx].flags.is_fpkg;
+                        #else
+                        bool is_fpkg = false;
                         #endif
                         if (!numb_of_updates || is_fpkg) {
                           pen.y = 680., pen.x = 1040.;
@@ -518,6 +780,24 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                         pen.y = 620., pen.x = 1040.; //KB to Bytes to String
                         tmp = fmt::format("{} {}", getLangSTR(LANG_STR::PATCH_SIZE), calculateSize(std::stol(update_info.update_size[update_current_index])));
                         l.vbo.add_text(main_font, tmp, color, pen);
+
+                        pen.y = 590., pen.x = 1040.;
+                        l.vbo.add_text(main_font, fmt::format("FW: {}", (update_info.required_fw.at(update_current_index) == 0 || update_current_index >=  update_info.required_fw.size() )? "Unknown": FWString(update_info.required_fw.at(update_current_index))), color, pen);
+                        pen.y = 530., pen.x = 820.;
+                        update_is_supported = update_info.required_fw.at(update_current_index) <= ps4_fw_version();
+                        vec4 comp_color = {0.0, 0.8, 0.0, 1.0};
+
+                        if (!update_is_supported)
+                            comp_color = {1.0, 0.2, 0.2, 1.0}; // RGBA components for light red color
+
+
+                        if(update_info.required_fw.at(update_current_index) != 0 )
+                           l.vbo.add_text(main_font, update_is_supported ? "This Update supports your FW" : fmt::format("NOT Compatible with your current System Firmware ({})", FWString(ps4_fw_version())), comp_color, pen);
+                        else{
+                           vec4 gray = {0.5, 0.5, 0.5, 1.0};
+                           l.vbo.add_text(main_font, "Unable to obtain the required FW for this update, use with caution", gray, pen);
+                        }
+
                         pen.y = 500., pen.x = 1265.;
                         l.vbo.add_text( main_font, fmt::format("{}/{}", (int)li.multi_sel.pos.y+1, numb_of_updates), color, pen);
 
@@ -538,7 +818,6 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                     }
                     case cf_ops::REG_OPTS::TRAINERS:
                     {
-#if defined(__ORBIS__)
                         patch_current_index = li.multi_sel.pos.y;
                         li.multi_sel.pos.w = trs.controls_text.size();
                         vec4 color = (vec4){.8164, .8164, .8125, 1.};
@@ -562,7 +841,6 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                         log_debug("index: %i size: %i state %i ", patch_current_index, trs.controls_text.size(), trs.patcher_enablement.at(patch_current_index));
                         tmp = fmt::format("< {0:.20} / {1} >", trainer_get_str(patch_current_index), trs.controls_text.size());
                         break;
-#endif
                     }
                 }
                 // compute rectangle position and size in px
@@ -688,7 +966,7 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                     break;
                 }
                 case cf_ops::REG_OPTS::RETAIL_UPDATES:{
-                    print_option_info(l, pen, getLangSTR(LANG_STR::GAME_SAVE), "", false);
+                    print_option_info(l, pen, "Install retail game updates from Sonys CDN", "", false);
                     break;
                 }
 
@@ -1010,6 +1288,165 @@ static void hostapp_vapp_compose_text(view_t vw, int idx, vec2& pen, bool save_t
     
 }
 
+/* default way to deal with text, for layout_t */
+static void usbvapp_compose_text(view_t vw, int idx, vec2 &pen,
+                                      bool save_text) {
+#if 0
+    log_info("%s %p, %d", __FUNCTION__, l, save_text);
+#endif
+  layout_t &l = getLayoutbyView(vw);
+  std::string tmp = "";
+  GameStatus app_state = app_status.load();
+
+  vec4 c = col * .75f;
+  // default indexing, item_t* AOS
+  item_t &li = l.item_d[idx];
+
+  if (vw != ITEM_PAGE)
+    return;
+
+  vec2 bk = pen;
+  bk.x += 10, bk.y += 50;
+  vec2 sub_ops = {bk.x, bk.y};
+
+  l.vbo.add_text(sub_font, li.info.name, col, bk);
+
+  /* special option */
+  vec2 tp = pen;
+  switch (idx) {
+  case cf_ops::USBVAPP_OPTS::LAUNCH_USBVAPP:
+    if (app_state != RESUMABLE)
+      break;
+    if (!li.multi_sel.is_active) {
+      li.multi_sel.pos = (ivec4){0, 0, 0, 2};
+      li.multi_sel.is_active = true;
+      log_info("$$$$$  multi_sel is active");
+    }
+
+    // set active for all above too
+    // li.multi_sel.is_active = true;
+    if (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE) {
+      // show '< X >' around Option
+      switch (idx) {
+      case cf_ops::USBVAPP_OPTS::LAUNCH_USBVAPP: {
+        tmp = fmt::format(
+            "< {0:.20} >",
+            control_app_get_str((GameStatus)(li.multi_sel.pos.y + 1)));
+        break;
+      }
+      }
+      // compute rectangle position and size in px
+      vec4 r = get_rect_from_index(idx, l, NULL);
+      // start at panel position, move to center
+      tp = pen;
+      tp.x = (l.bound_box.x + r.z / 2.) + 300.;
+      // we need to know Text_Length_in_px in advance, so we call this:
+      texture_font_load_glyphs(main_font, tmp.c_str());
+      tp.x -= tl / 2.;
+      pen = tp;
+    } else
+      tmp = getLangSTR(LANG_STR::SELECT_INTERACT);
+
+    break;
+
+  case cf_ops::USBVAPP_OPTS::CHANGE_DIR_USBVAPP: {
+    if (all_apps[g_idx].info.id != WORKSPACE0_TID) {
+      tmp = all_apps[g_idx].info.vapp_path;
+      break;
+    }
+    tmp = fmt::format("{0:.20}{1:}", set.setting_strings[USBVAPP_PATH],
+                      (set.setting_strings[USBVAPP_PATH].size() > 20) ? "..."
+                                                                      : "");
+    break;
+  }
+  case cf_ops::USBVAPP_OPTS::OVERRIDE_TID: {
+    if (all_apps[g_idx].info.id != WORKSPACE0_TID) {
+      tmp = all_apps[g_idx].info.id;
+      break;
+    }
+    if (!set.setting_strings[USBAPP_OVERRIDE_TID].empty()) {
+      tmp = fmt::format(
+          "{0:.20}{1:}", set.setting_strings[USBAPP_OVERRIDE_TID],
+          (set.setting_strings[USBAPP_OVERRIDE_TID].size() > 20) ? "..." : "");
+    } else {
+      tmp = "CUSA00000";
+
+
+
+        std::string sfo_path =
+            set.setting_strings[USBVAPP_PATH] + "/sce_sys/param.sfo";
+        if (!if_exists(sfo_path.c_str())) {
+          break;
+        } else {
+          std::vector<uint8_t> sfo_data = readFile(sfo_path);
+          if (sfo_data.empty()) {
+            break;
+          }
+
+          SfoReader sfo(sfo_data);
+          tmp = sfo.GetValueFor<std::string>("TITLE_ID");
+        }
+      
+      break;
+    }
+  }
+  case cf_ops::USBVAPP_OPTS::SCAN_FOR_APPS: {
+    tmp = "Scan the PS4 for Fake Games";
+    break;
+  }
+  }
+  // log_info("str %s", set.setting_strings[USBVAPP_PATH].c_str());
+
+  if (tmp.size() > 3) {
+    sub_ops.y -= 40;
+
+    l.vbo.add_text(main_font, tmp, c, sub_ops);
+  }
+
+  if (idx == 0 ||
+      (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE)) {
+    // print options info
+    switch (l.curr_item) { // RESTORE_NOTICE
+    case cf_ops::USBVAPP_OPTS::CHANGE_DIR_USBVAPP:
+      print_option_info(l, pen, "Change the Active App path to switch Apps", "",
+                        false);
+      break;
+    case cf_ops::USBVAPP_OPTS::COPY_DIR_LOCAL_HA:
+      print_option_info(l, pen,
+                        "Copy the selected App folder to another folder",
+                        "Select the dest. (keeps folder name)", false);
+      break;
+    case cf_ops::USBVAPP_OPTS::LAUNCH_USBVAPP:
+      if (li.multi_sel.is_active && li.multi_sel.pos.x == FIRST_MULTI_LINE) {
+        // show '< X >' around Option
+        if (app_state == RESUMABLE)
+          print_option_info(l, pen, getLangSTR(LANG_STR::GAME_CONTROL_INFO),
+                            getLangSTR(LANG_STR::SUSPEND_IF), false);
+        else
+          print_option_info(l, pen, getLangSTR(LANG_STR::CLOSE_OPEN_APP_INFO),
+                            "", false);
+      } else if (app_state == NO_APP_OPENED)
+        print_option_info(l, pen, getLangSTR(LANG_STR::LAUNCH_INFO),
+                          getLangSTR(LANG_STR::SUSPEND_IF), false);
+      else if (app_state == OTHER_APP_OPEN)
+        print_option_info(l, pen, getLangSTR(LANG_STR::CLOSE_OPEN_APP_INFO), "",
+                          false);
+      else if (app_state == RESUMABLE)
+        print_option_info(l, pen, getLangSTR(LANG_STR::GAME_CONTROL_INFO),
+                          getLangSTR(LANG_STR::SUSPEND_IF), false);
+
+      break;
+    case cf_ops::USBVAPP_OPTS::SCAN_FOR_APPS:
+      print_option_info(l, pen, "Scan for supported PS4 Fake Games",
+                        "Scans /mnt/usbX, /mnt/extX, /user and /data", false);
+      break;
+    default:
+      break;
+    }
+  }
+  return;
+}
+
 /*
     last review_menu:
     - correct positioning, in px
@@ -1059,14 +1496,23 @@ void  GLES2_render_layout_v2(view_t vw)
     {
         vec4 cc = (vec4){41., 41., 41., 256.} / 256.;
         draw_rect(cc, 770., 800., 600., -320.);
-        if(ic > GL_NULL){
+        if (ic > GL_NULL) {
           render_button(ic, 170., 170., 840., 560., 1.);
+          if (!update_is_supported && incomp_icon > GL_NULL)
+            render_button(incomp_icon, 170., 170., 840., 560., 1.);
         }
     }
-    else if (vw == ITEM_PAGE && ls_p.curr_item == cf_ops::REG_OPTS::TRAINERS && skipped_first_X)
+    else if (vw == ITEM_PAGE && ls_p.curr_item == cf_ops::REG_OPTS::TRAINERS && skipped_first_X && patch_count)
     {
         vec4 cc = (vec4){41., 41., 41., 256.} / 256.;
         draw_rect(cc, 770., 800., 600., -320.);
+    }
+    else if(vw == ITEM_PAGE && ls_p.curr_item == cf_ops::VAPP_OPTS::SHOW_APP_INFO && skipped_first_X){
+         vec4 cc = (vec4){ 41., 41., 41., 256. } / 256.;
+         draw_rect(cc, 770., 800., 600., -320.);
+         if (ic > GL_NULL) {
+            render_button(ic, 128., 128., 1210., 655., 1.);
+         }
     }
 
     if (!is_file_browser)
@@ -1133,6 +1579,13 @@ if (l.vbo_s < CLOSED && !is_file_browser)
          if(title_id.get() == APP_HOME_HOST_TID){
             hostapp_vapp_compose_text(vw, loop_idx, tp, save_text);
          }
+        else if (title_id.get() == WORKSPACE0_TID){
+            usbvapp_compose_text(vw, loop_idx, tp, save_text);
+        }
+        else if(curr_app_not_found)
+                vapp_not_found_compose_text(vw, loop_idx, tp, save_text);
+        else
+            game_vapp_compose_text(vw, loop_idx, tp, save_text);
        }
        else
         layout_compose_text(vw, loop_idx, tp, save_text);
@@ -1218,7 +1671,7 @@ if (!l.f_rect.empty() && !is_file_browser)
                 // build filepath
                 std::string out;
                 /* draw over item */
-                out = fmt::format("{0:.30}{1:}", li.info.id, li.info.id.size() > 30 ? "..." : "");
+                out = fmt::format("{0:.24}{1:}", li.info.id, li.info.id.size() > 24 ? "..." : "");
 
 
                 // update pen
@@ -1376,6 +1829,26 @@ void GLES2_render_list(view_t v)
                 //l.fieldsize = (ivec2){ 2, 1 };
                 l.bound_box = (vec4){ 120, resolution.y - 200,  620, 600 };
                 l.fieldsize = (ivec2){ 2, 5 };
+            }
+            else if (is_vapp(title_id.get())){
+              int numb_of_opts = 4;
+              if (title_id.get() == WORKSPACE0_TID)
+                numb_of_opts = 5;
+              else if (curr_app_not_found)
+                numb_of_opts = 1;
+
+              GLES2_layout_init(numb_of_opts, l);
+              // l.bound_box = (vec4){ 120, resolution.y - 200,  620, 100 };
+              // l.fieldsize = (ivec2){ 2, 1 };
+              l.bound_box = (vec4){120, resolution.y - 200, 620, 600};
+              l.fieldsize = (ivec2){2, 5};
+            }
+
+
+            if (curr_app_not_found) {
+                layout_fill_item_from_list(l, gm_p_text);
+               // log_info("current app not found, returning...");
+                return;
             }
 
             switch (app_status.load())

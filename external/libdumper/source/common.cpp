@@ -20,45 +20,56 @@ void ProgUpdate(uint32_t prog, std::string fmt)
 	}
 }
 
-bool copy_dir(const std::string & source_dir,
-  const std::string & dest_dir) {
-  try {
+
+bool copy_dir(const std::string& source_dir, const std::string& dest_dir) {
     std::filesystem::path src_dir_path(source_dir);
     std::filesystem::path dst_dir_path(dest_dir);
+    std::error_code ec;
 
-    if (!std::filesystem::exists(src_dir_path)) {
-      log_error("Source directory does not exist: %s", source_dir.c_str());
-      return false;
+    if (!std::filesystem::exists(src_dir_path, ec)) {
+        log_error("Source directory does not exist: %s", source_dir.c_str());
+        return false;
     }
 
-    std::filesystem::create_directory(dst_dir_path);
-    for (const auto & entry: std::filesystem::directory_iterator(src_dir_path)) {
-      std::filesystem::path entry_path = entry.path();
-      std::string file_name = entry_path.filename().string();
-
-      if (file_name == "save.ini") {
-        log_error("Save.ini file skipped...");
-        continue;
-      }
-
-      if (file_name == "." || file_name == ".." || file_name.find("nobackup") != std::string::npos) {
-        continue;
-      }
-
-      std::filesystem::path dst_path = dst_dir_path / entry_path.filename();
-
-      if (std::filesystem::is_directory(entry_path)) {
-        copy_dir(entry_path.string(), dst_path.string());
-      } else if (std::filesystem::is_regular_file(entry_path)) {
-        std::filesystem::copy(entry_path, dst_path, std::filesystem::copy_options::overwrite_existing);
-      }
+    std::filesystem::create_directory(dst_dir_path, ec);
+    if (ec) {
+        log_error("Failed to create destination directory: %s", ec.message().c_str());
+        return false;
     }
-  } catch (std::exception & e) {
-    log_error("Exception: %s", e.what());
-    return false;
-  }
 
-  return true;
+    for (const auto& entry : std::filesystem::directory_iterator(src_dir_path, ec)) {
+        if (ec) {
+            log_error("Failed to iterate source directory: %s", ec.message().c_str());
+            return false;
+        }
+        std::filesystem::path entry_path = entry.path();
+        std::string file_name = entry_path.filename().string();
+
+        if (file_name == "." || file_name == ".." || file_name.find("nobackup") != std::string::npos) {
+            continue;
+        }
+
+        std::filesystem::path dst_path = dst_dir_path / entry_path.filename();
+
+        if (std::filesystem::is_directory(entry_path, ec)) {
+            if(ec) {
+                log_error("Failed to check if %s is a directory: %s", entry_path.string().c_str(), ec.message().c_str());
+                continue;
+            }
+            if (!copy_dir(entry_path.string(), dst_path.string())) {
+                log_info("Failed to copy directory %s", entry_path.string().c_str());
+                return false;
+            }
+        } else if (std::filesystem::is_regular_file(entry_path, ec)) {
+            std::filesystem::copy(entry_path, dst_path, std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                log_error("Failed to copy file %s: %s", entry_path.string().c_str(), ec.message().c_str());
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 // Function that will be called for each row returned by the query
 static int dlc_callback(void* data, int argc, char** argv, char** azColName) {

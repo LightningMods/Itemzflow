@@ -871,7 +871,12 @@ namespace elf {
                 }
                 else if (S_ISREG(fileInfo.st_mode))
                 {
-                    if (elf::Check_ELF_Magic(sourcePath.string().c_str(), SELF_MAGIC))
+                    // should make it faster for games with a lot of files, check ext. first then magic
+                    // checking the ext is faster than checking the magic
+                    bool is_common_self_ext = sourcePath.string().compare(sourcePath.string().size() - 4, 4, ".dll") == 0 || sourcePath.string().compare(sourcePath.string().size() - 4, 4, ".bin") == 0 
+                    || sourcePath.string().compare(sourcePath.string().size() - 4, 4, ".prx") == 0 || sourcePath.string().compare(sourcePath.string().size() - 5, 5, ".sprx") == 0;
+
+                    if (is_common_self_ext && elf::Check_ELF_Magic(sourcePath.string().c_str(), SELF_MAGIC))
                     {
                          if (!elf::decrypt_and_dump_self(sourcePath.string().c_str(), destinationPath.string().c_str()))
                          {
@@ -890,9 +895,9 @@ namespace elf {
                             log_info("file: %s is NOT an fself", sourcePath.string().c_str());
                         }
                     }
-                    else {
-                        log_info("file: %s is NOT a self", sourcePath.string().c_str());
-                    }
+                   // else {
+                       // log_info("file: %s is NOT a self", sourcePath.string().c_str());
+                   // }
                 }
             }
         }

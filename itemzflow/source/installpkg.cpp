@@ -9,6 +9,7 @@
 
 
 extern std::string tmp;
+extern bool update_is_supported;
 
 int PKG_ERROR(const char *name, int ret) {
   msgok(MSG_DIALOG::WARNING,
@@ -345,7 +346,12 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
         goto retry;
       } else
         return PKG_ERROR("APP_ALREADY_EXISTS", ret);
-    } else if (ret)
+    } 
+    else if(ret == 0x80990086) {
+        msgok(MSG_DIALOG::WARNING, "this game is already installing via the notifcations, please cancel it to continue.");
+    return 0x80990086;
+   }
+   else if (ret)
       return PKG_ERROR("sceBgftServiceIntDownloadRegisterTaskByStorageEx", ret);
 
     log_info("Task ID(s): 0x%08X", task_id);
@@ -355,6 +361,11 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
       return PKG_ERROR("sceBgftDownloadStartTask", ret);
   } else // bgft_download_get_task_progress
     return PKG_ERROR("no file at", ret);
+
+  if (!Show_install_prog) {
+      log_info("Install progress is disabled, sent to the PS4...");
+      return 0;
+  }
 
   struct install_args *args =
       (struct install_args *)malloc(sizeof(struct install_args));
@@ -368,15 +379,7 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
   args->max_pkgs = max_pkgs;
   args->curr_pkg = curr_pkg;
 
-  if (Show_install_prog) {
-    install_prog((void *)args);
-  } else {
-    pthread_t thread = 0;
-    ret = pthread_create(&thread, NULL, install_prog, (void *)args);
-    log_debug("pthread_create for %x, ret:%d", task_id, ret);
-
-    return 0;
-  }
+  install_prog((void *)args);
 
   log_info("%s(%s) done.", __FUNCTION__, fullpath);
 
@@ -386,6 +389,13 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
 uint32_t installPatchPKG(const char *url, const char *title_id, const char* icon_path) {
   int ret = -1;
   int task_id = -1;
+
+  if(!update_is_supported){
+    if(custom_Confirmation_Msg("This Update is not compatible with your current FW, would you like to install it anyways? ", "Install anyways", "DO NOT INSTALL") == NO){
+      log_info("User chose not to install the update");
+      return -1;
+    }
+  }
 
   log_info("Initializing BGFT...");
   if (!bgft_init()) {
@@ -409,6 +419,11 @@ uint32_t installPatchPKG(const char *url, const char *title_id, const char* icon
   if(ret == 0x80990015) {
     msgok(MSG_DIALOG::WARNING, "A Patch for this game is already installing please cancel it to continue.");
     return 0x80990015;
+  }
+  else if(ret == 0x804101E8 || ret == 0x804101E1 || ret == 0x80990045 || ret  == 0x8041013D){
+    msgok(MSG_DIALOG::WARNING, "Your Network is blocking the connection to Sonys Server/CDN, Try unblocking it or removing your DNS before trying again");
+    return 0xDEADBABE;
+
   }
   else if (ret) return PKG_ERROR( "sceBgftServiceIntDebugDownloadRegisterPkg", ret);
 

@@ -398,22 +398,14 @@ void generate(const std::string& sfo_path, const std::string& output_path, const
 
     std::string c_date; // "YYYY-MM-DD"
     if (std::count(pubtool_keys.begin(), pubtool_keys.end(), std::string("c_date"))) {
-        try {
-              c_date = sfo::get_pubtool_value("c_date", pubtool_data);
-              sprintf(&buff[0], "%.4s-%.2s-%.2s", c_date.c_str(), c_date.c_str() + 4, c_date.c_str() + 6);
-              c_date = std::string(buff);
-        }
-        catch (...) {
-        } // get_pubtool_value throws if key is not found but we don't care and c_date will remain empty
+        c_date = sfo::get_pubtool_value("c_date", pubtool_data);
+        sprintf(&buff[0], "%.4s-%.2s-%.2s", c_date.c_str(), c_date.c_str() + 4, c_date.c_str() + 6);
+        c_date = std::string(buff);
     }
 
     std::string c_time; // "XXXXXX"
     if (std::count(pubtool_keys.begin(), pubtool_keys.end(), std::string("c_time"))) {
-        try {
-           c_time = sfo::get_pubtool_value("c_time", pubtool_data);
-        }
-        catch (...) {
-        } // get_pubtool_value throws if key is not found but we don't care and c_time will remain empty
+        c_time = sfo::get_pubtool_value("c_time", pubtool_data);
     }
 
     // Get content type string for GP4

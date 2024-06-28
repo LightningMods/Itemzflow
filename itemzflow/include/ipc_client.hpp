@@ -165,7 +165,7 @@ IPC_Ret IPCSendCommand(IPC_Commands cmd, std::string& ipc_msg, bool silent = fal
                     ipc_msg = "Error";
                 }
                 if(!silent)
-                   log_debug("[ItemzDaemon] Daemon IPC Response: %s, code: %s, readSize: %i", msg.msg, error == IPC_Ret::NO_ERROR ? "NO_ERROR" : "Other", readSize);
+                   log_debug("[ItemzDaemon] Daemon IPC Response: %s, code: %s, readSize: %i", ipc_msg.c_str(), error == IPC_Ret::NO_ERROR ? "NO_ERROR" : "Other", readSize);
             } else {
                 log_error("[ItemzDaemon] Daemon returned INVAL");
             }

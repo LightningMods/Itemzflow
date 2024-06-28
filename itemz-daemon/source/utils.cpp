@@ -936,6 +936,7 @@ bool copy_dir(const char* sourcedir,const char* destdir) {
 
 bool full_init()
 {
+    pthread_t fuse_start_thread;
     
     // pad
     if (sceSysmoduleLoadModuleInternal(SCE_SYSMODULE_INTERNAL_PAD)) return false;
@@ -952,7 +953,6 @@ bool full_init()
     mkdir("/mnt/usb0/itemzflow", 0777);
     unlink(DAEMON_LOG_PS4);
     // get fuse ip
-    load_fuse_ip();
 
     /*-- INIT LOGGING FUNCS --*/
     log_set_quiet(false);
@@ -985,6 +985,8 @@ bool full_init()
        log_error("Failed to open start state manager");
        notify("Failed to open start state manager");
     }
+
+    pthread_create(&fuse_start_thread, NULL, fuse_startup, NULL);
 
     return true;
 }

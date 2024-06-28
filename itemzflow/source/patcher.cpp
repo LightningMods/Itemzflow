@@ -13,6 +13,7 @@
 unsigned char false_data[2] = { 0x30, 0xa }; // "0\n"
 unsigned char true__data[2] = { 0x31, 0xa }; // "1\n"
 std::string patch_file;
+extern u32 patch_count;
 
 u64 djb2(const char *str) {
     u64 hash = 5381;
@@ -21,6 +22,7 @@ u64 djb2(const char *str) {
         hash = hash * 33 ^ c;
     return hash;
 }
+
 
 u64 patch_hash_calc(std::string title, std::string name, std::string app_ver, std::string title_id, std::string name_elf)
 {

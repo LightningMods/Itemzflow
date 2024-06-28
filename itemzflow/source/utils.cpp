@@ -349,7 +349,8 @@ bool copyFile(std::string source, std::string dest, bool show_progress) {
 
     sceKernelClose(src);
     sceKernelClose(out);
-    sceMsgDialogTerminate();
+    if (show_progress)
+      sceMsgDialogTerminate();
     return true;
   } else {
     fmt::print("Could copy file: {} Reason: {x}", dest, src);
@@ -705,6 +706,9 @@ static int print_ini_info(void *user, const char *section, const char *name,
   } else if (MATCH("Settings", "Internal_update")) {
     set->setting_bools[INTERNAL_UPDATE] = atoi(value);
   }
+  else if (MATCH("Settings", "Background_install")) {
+        set->setting_bools[BACKGROUND_INSTALL] = atoi(value);
+  }
 
   return 1;
 }
@@ -722,6 +726,7 @@ bool LoadOptions(ItemzSettings *set) {
   dump = SEL_RESET;
   set->setting_bools[Daemon_on_start] = true;
   set->Dump_opt = SEL_DUMP_ALL;
+  get->setting_bools[BACKGROUND_INSTALL] = false;
   set->sort_cat = NO_CATEGORY_FILTER;
   set->sort_by = multi_select_options::NA_SORT;
   set->setting_bools[using_sb] = true;
@@ -955,7 +960,7 @@ bool SaveOptions(ItemzSettings *set) {
       "\nShow_install_prog={3:d}\nHomeMenu_Redirection={4:d}\nDaemon_on_start={"
       "5:d}\ncover_message={6:d}\nDumper_Path={7:}\nMP3_Path={8:}\nShow_"
       "Buttons={9:d}\nEnable_Theme={10:d}\nImage_path={11:}\nReflections={12:d}"
-      "\nFuse_IP={13:}\n{14:}={15:d}",
+      "\nFuse_IP={13:}\n{14:}={15:d}\nBackground_install={16:d}",
       (int)set->sort_by, (int)set->sort_cat, set->setting_strings[FNT_PATH],
       set->setting_bools[Show_install_prog],
       set->setting_bools[HomeMenu_Redirection],
@@ -965,7 +970,7 @@ bool SaveOptions(ItemzSettings *set) {
       set->setting_strings[IMAGE_PATH], use_reflection,
       set->setting_strings[FUSE_PC_NFS_IP],
       set->setting_bools[INTERNAL_UPDATE] ? "Internal_update" : "RESTRICTED",
-      set->setting_bools[INTERNAL_UPDATE]);
+      set->setting_bools[INTERNAL_UPDATE], set->setting_bools[BACKGROUND_INSTALL]);
 
   std::ofstream out(set->setting_strings[INI_PATH]);
   if (out.bad()) {
@@ -1026,10 +1031,10 @@ bool Keyboard(const char *Title, const char *initialTextBuffer,
   sceSysmoduleLoadModule(ORBIS_SYSMODULE_IME_DIALOG);
 
   wchar_t title[100];
-  wchar_t inputTextBuffer[255];
+  wchar_t inputTextBuffer[256];
   char titl[100];
 
-  if (initialTextBuffer && strlen(initialTextBuffer) > 1023)
+  if (initialTextBuffer && strlen(initialTextBuffer) > 254)
     return "Too Long";
 
   memset(&inputTextBuffer[0], 0, 255);
@@ -1114,7 +1119,8 @@ bool rmtree(const char path[]) {
           log_debug("Err: %d", ret = unlinkat(dirfd(dr), fname, AT_REMOVEDIR));
         }
       } else {
-        log_debug("Removing file: %s, Err: %d", fname, unlink(fname));
+        unlink(fname);
+        // log_debug("Removing file: %s, Err: %d", fname, unlink(fname));
       }
     }
   }
@@ -1841,37 +1847,37 @@ void loadmsg(std::string in) {
 }
 
 void scan_for_disc() {
-  // check if theres a disc
-  // std::lock_guard < std::mutex > lock(disc_lock);
-  char stack_tid[16];
-  int ret = -1;
+    // check if theres a disc
+    // std::lock_guard<std::mutex> lock(disc_lock);
+    char stack_tid[16];
+    int ret = -1;
 
-  memset(&stack_tid[0], 0, 16);
-  if ((ret = sceAppInstUtilAppGetInsertedDiscTitleId(&stack_tid[0])) >= 0 &&
-      !is_disc_inserted.load()) {
-    if (!all_apps.empty() && all_apps.size() > 1) {
-      for (int i = 0; i < all_apps[0].count.token_c + 1; i++) {
-        // skip if its an FPKG
-        if (all_apps[i].flags.is_fpkg)
-          continue;
+    memset(&stack_tid[0], 0, 16);
+    if ((ret = sceAppInstUtilAppGetInsertedDiscTitleId(&stack_tid[0])) >= 0 && !is_disc_inserted.load()) {
+        if (!all_apps.empty() && all_apps.size() > 1) {
+            for (auto it = all_apps.begin(); it != all_apps.end(); ++it) {
+                auto& item = *it;
+                // skip if it's an FPKG or PH
+                if (item.flags.is_fpkg || item.flags.is_ph) {
+                    continue;
+                }
 
-        // log_info("Disc inserted: %s : %i %s", stack_tid, i ,all_apps[i].info.id.c_str());
-        if (all_apps[i].info.id.find(&stack_tid[0]) != std::string::npos) {
-          // Store the texture ID of the inserted disc
-          inserted_disc = i;
-          // inserted_disc: 1 CUSA00900 1  18
-          log_info("[UTIL] inserted_disc: %i %s %i %s %i", inserted_disc.load(),
-                   stack_tid, i, all_apps[i].info.id.c_str(), all_apps.size());
-          is_disc_inserted = true;
-          break;
+                // log_info("Disc inserted: %s : %ld %s", stack_tid, std::distance(all_apps.begin(), it), item.info.id.c_str());
+                if (item.info.id.find(&stack_tid[0]) != std::string::npos) {
+                    // Store the texture ID of the inserted disc
+                    inserted_disc = std::distance(all_apps.begin(), it);
+                    // inserted_disc: 1 CUSA00900 1 18
+                    log_info("[UTIL] inserted_disc: %i %s %ld %s %zu", inserted_disc.load(), stack_tid, std::distance(all_apps.begin(), it), item.info.id.c_str(), all_apps.size());
+                    is_disc_inserted = true;
+                    break;
+                }
+            }
         }
-      }
+    } else if (ret == SCE_APP_INSTALLER_ERROR_DISC_NOT_INSERTED) {
+        // log_info("[UTIL] disc not inserted %x", ret);
+        inserted_disc = -999;
+        is_disc_inserted = false;
     }
-  } else if (ret == SCE_APP_INSTALLER_ERROR_DISC_NOT_INSERTED) {
-    // log_info("[UTIL] disc not inserted %x", ret);
-    inserted_disc = -999;
-    is_disc_inserted = false;
-  }
 }
 
 bool install_IF_Theme(std::string theme_path) {
@@ -2042,11 +2048,18 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
         switch (sys_res) {
         case SCE_LNC_ERROR_APP_NOT_FOUND: {
           // msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::APP_NOT_FOUND));
-          if (Confirmation_Msg( fmt::format("{0:}\n\n{1:}\n{2:}",  getLangSTR(LANG_STR::IF_LAUNCH_TROUBLESHOOTER), getLangSTR(LANG_STR::LAUNCH_FAILED_BC_NOT_FOUND), getLangSTR(LANG_STR::CONFIRMATION_2))) == YES) {
+          if (Confirmation_Msg(
+                  fmt::format("{0:}\n\n{1:}\n{2:}",
+                              getLangSTR(LANG_STR::IF_LAUNCH_TROUBLESHOOTER),
+                              getLangSTR(LANG_STR::LAUNCH_FAILED_BC_NOT_FOUND),
+                              getLangSTR(LANG_STR::CONFIRMATION_2))) == YES) {
             if (Fix_Game_In_DB(all_apps[index], all_apps[index].flags.is_fpkg))
-              ani_notify(NOTIFI::GAME,  getLangSTR(LANG_STR::GAME_INSERT_SUCCESSFUL), getLangSTR(LANG_STR::REPAIR_ATTEMPTED1));
+              ani_notify(NOTIFI::GAME,
+                         getLangSTR(LANG_STR::GAME_INSERT_SUCCESSFUL),
+                         getLangSTR(LANG_STR::REPAIR_ATTEMPTED1));
             else
-              msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::GAME_INSERT_FAILED));
+              msgok(MSG_DIALOG::WARNING,
+                    getLangSTR(LANG_STR::GAME_INSERT_FAILED));
           }
           break;
         }
@@ -2080,11 +2093,11 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
         }
         case SCE_LNC_UTIL_ERROR_ALREADY_RUNNING_KILL_NEEDED: {
           log_debug("ALREADY RUNNING KILL NEEDED");
-          break;
+          return ITEMZCORE_SUCCESS; 
         }
         case SCE_LNC_UTIL_ERROR_ALREADY_RUNNING_SUSPEND_NEEDED: {
           log_debug("ALREADY RUNNING SUSPEND NEEDED");
-          break;
+           return ITEMZCORE_SUCCESS; 
         }
         case SCE_LNC_UTIL_ERROR_SETUP_FS_SANDBOX: {
           msgok(MSG_DIALOG::WARNING, getLangSTR(LANG_STR::APP_UNL));
@@ -2100,6 +2113,10 @@ uint32_t Launch_App(std::string TITLE_ID, bool silent, int index) {
             msgok(MSG_DIALOG::WARNING,
                   getLangSTR(LANG_STR::LNC_TOO_MANY_ROOT_FILES));
 
+          break;
+        }
+        case 0x805516F9: {
+          msgok(MSG_DIALOG::WARNING, "Trophy is encrypted and cant be used");
           break;
         }
 
@@ -2230,8 +2247,9 @@ void rebuild_db() {
       bool is_if =
           ((item.info.id == "ITEM00001") || (item.info.id == "ITEM99999"));
       if (!item.flags.is_fpkg || is_if || item.flags.is_vapp ||
-          item.flags.is_ext_hdd) { // if its not an fpkg or Itemzflow, skip
-        fmt::print("Skipping {}: {}", is_if ? "IF" : "Retail Game",
+          item.flags.is_ext_hdd ||
+          item.flags.is_ph) { // if its not an fpkg or Itemzflow, skip
+        fmt::print("Skipping {}: {}", is_if ? "IF" : "App or PC or ext",
                    item.info.name);
         continue;
       }
@@ -2289,11 +2307,14 @@ void delete_apps_array(ThreadSafeVector<item_t> &apps_arr) {
   if (apps_arr.empty())
     return;
 
-  for (int i = 1; i <= apps_arr.at(0).count.token_c; i++) {
-    GLuint text = apps_arr.at(i).icon.texture.load();
-    if (text > GL_NULL) {
-      glDeleteTextures(1, &text);
-      apps_arr.at(i).icon.texture = GL_NULL;
+  for (auto &item : apps_arr) {
+    GLuint tex = item.icon.texture.load();
+    if (tex > GL_NULL && tex != fallback_t) {
+      glDeleteTextures(1, &tex);
+      log_info("Discarded texture for %s", item.info.id.c_str());
+      item.icon.texture = GL_NULL;
+      item.icon.turn_into_texture = false;
+      item.icon.cover_exists = false;
     }
   }
 
@@ -2319,14 +2340,15 @@ std::string NormalizeFWVersion(int version) {
 bool does_patch_exist(std::string tid, std::string &out_dir) {
   std::string tmp = out_dir = fmt::format("/user/patch/{}/patch.pkg", tid);
   if (!if_exists(tmp.c_str())) {
-      log_info("/user patch not found");
-      out_dir = tmp = fmt::format("/mnt/ext1/user/patch/{}/patch.pkg", tid);
+    log_info("/user patch not found");
+    out_dir = tmp = fmt::format("/mnt/ext1/user/patch/{}/patch.pkg", tid);
     if (!if_exists(tmp.c_str())) {
-        log_info("/mnt/ext1 patch not found");
-        out_dir = tmp = fmt::format("/mnt/ext0/user/patch/{}/patch.pkg", tid);
+      log_info("/mnt/ext1 patch not found");
+      out_dir = tmp = fmt::format("/mnt/ext0/user/patch/{}/patch.pkg", tid);
       if (!if_exists(tmp.c_str())) {
         log_info("/mnt/ext0 patch not found");
-        //ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_PATCH_AVAIL), "");
+        // ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::NO_PATCH_AVAIL),
+        // "");
         return false;
       }
     }
@@ -2335,12 +2357,16 @@ bool does_patch_exist(std::string tid, std::string &out_dir) {
   return true;
 }
 
-bool count_dlc(std::string tid, int &vaild_dlcs, int &avail_dlcs, bool verbose) {
+bool count_dlc(std::string tid, int &vaild_dlcs, int &avail_dlcs,
+               bool verbose) {
 
-  std::vector < std::tuple < std::string, std::string, std::string >> dlc_info = query_dlc_database(tid);
-  //print out dlc_info
-  for (const auto & result: dlc_info) {
-    std::cout << "PKG: " << std::get < 0 > (result) << " | DLC Name: " << std::get < 1 > (result) << " | Full Content ID: " << std::get < 2 > (result) << std::endl;
+  std::vector<std::tuple<std::string, std::string, std::string>> dlc_info =
+      query_dlc_database(tid);
+  // print out dlc_info
+  for (const auto &result : dlc_info) {
+    std::cout << "PKG: " << std::get<0>(result)
+              << " | DLC Name: " << std::get<1>(result)
+              << " | Full Content ID: " << std::get<2>(result) << std::endl;
   }
 
   std::string addcont_path_str;
@@ -2355,92 +2381,130 @@ bool count_dlc(std::string tid, int &vaild_dlcs, int &avail_dlcs, bool verbose) 
   } else {
     addcont_path_str = disc_addcont_dir;
   }
-  //printDirContentRecursively("/mnt/sandbox/pfsmnt/");
-  //printDirContentRecursively("/user/addcont/");
-  ///addcont_path /= title_id.get();
+  // printDirContentRecursively("/mnt/sandbox/pfsmnt/");
+  // printDirContentRecursively("/user/addcont/");
+  /// addcont_path /= title_id.get();
 
-  std::vector < std::string > unloaded_dlcs;
-  std::vector < std::string > loaded_dlcs;
+  std::vector<std::string> unloaded_dlcs;
+  std::vector<std::string> loaded_dlcs;
 
-  for (const auto & result: dlc_info) {
-    std::filesystem::path pkg_path(addcont_path_str + "/" + std::get < 0 > (result));
+  for (const auto &result : dlc_info) {
+    std::filesystem::path pkg_path(addcont_path_str + "/" +
+                                   std::get<0>(result));
     if (std::filesystem::is_directory(pkg_path)) {
       pkg_path /= "ac.pkg";
-      if (std::filesystem::exists(pkg_path) && std::filesystem::is_regular_file(pkg_path)) {
+      if (std::filesystem::exists(pkg_path) &&
+          std::filesystem::is_regular_file(pkg_path)) {
         // Construct path to pfs_image.dat file
         avail_dlcs++;
         if (file_size(pkg_path.c_str()) < MB(5)) {
           log_debug("AC PKG is likly just a license");
           vaild_dlcs++;
-          loaded_dlcs.push_back(std::get < 1 > (result));
+          loaded_dlcs.push_back(std::get<1>(result));
           continue;
         }
         std::filesystem::path pfs_path("/mnt/sandbox/pfsmnt/");
-        std::string full_content_id = std::get < 2 > (result);
-        pfs_path /= full_content_id + "-ac-nest"; // Use stem to get filename without extension
+        std::string full_content_id = std::get<2>(result);
+        pfs_path /= full_content_id +
+                    "-ac-nest"; // Use stem to get filename without extension
         pfs_path /= "pfs_image.dat";
 
-        if (std::filesystem::exists(pfs_path) && std::filesystem::is_regular_file(pfs_path)) {
-          log_info("Found pfs at %s | full_content_id %s | pkg %s ", pfs_path.string().c_str(), full_content_id.c_str(), pkg_path.string().c_str());
-          log_info("DLC Name: %s", std::get < 1 > (result).c_str());
+        if (std::filesystem::exists(pfs_path) &&
+            std::filesystem::is_regular_file(pfs_path)) {
+          log_info("Found pfs at %s | full_content_id %s | pkg %s ",
+                   pfs_path.string().c_str(), full_content_id.c_str(),
+                   pkg_path.string().c_str());
+          log_info("DLC Name: %s", std::get<1>(result).c_str());
           vaild_dlcs++;
-          loaded_dlcs.push_back(std::get < 1 > (result));
+          loaded_dlcs.push_back(std::get<1>(result));
         } else {
-          unloaded_dlcs.push_back(std::get < 1 > (result));
+          unloaded_dlcs.push_back(std::get<1>(result));
           log_error("PFS file not found");
         }
       }
     } else {
-      log_error("Path does not exist or is not a directory: %s", addcont_path_str.c_str());
-     // ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
+      log_error("Path does not exist or is not a directory: %s",
+                addcont_path_str.c_str());
+      // ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
       return false;
     }
   }
 
   if (avail_dlcs == 0) {
-   // ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
+    // ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
     return false;
   }
 
-  if(!verbose){
+  if (!verbose) {
     return true;
   }
 
   if (vaild_dlcs < avail_dlcs) {
-      std::string unloaded_dlcs_str = fmt::format("Unloaded DLCs: {}\n{}", unloaded_dlcs.size(), fmt::join(unloaded_dlcs, "\n"));
-      std::string loaded_dlcs_str = fmt::format("Loaded DLCs: {}\n{}", loaded_dlcs.size(), fmt::join(loaded_dlcs, "\n"));
-      if (Confirmation_Msg(fmt::format("Not all available DLC is loaded by the game and cannot be dumped do you want to continue?\n\nAvailable DLCs: {}\n{}\n{}", avail_dlcs, loaded_dlcs_str, unloaded_dlcs_str)) == NO){
-          return false;
-      }
+    std::string unloaded_dlcs_str =
+        fmt::format("Unloaded DLCs: {}\n{}", unloaded_dlcs.size(),
+                    fmt::join(unloaded_dlcs, "\n"));
+    std::string loaded_dlcs_str =
+        fmt::format("Loaded DLCs: {}\n{}", loaded_dlcs.size(),
+                    fmt::join(loaded_dlcs, "\n"));
+    if (Confirmation_Msg(fmt::format(
+            "Not all available DLC is loaded by the game and cannot be dumped "
+            "do you want to continue?\n\nAvailable DLCs: {}\n{}\n{}",
+            avail_dlcs, loaded_dlcs_str, unloaded_dlcs_str)) == NO) {
+      return false;
+    }
   }
 
   return true;
-
 }
-std::string getBaseFilename(const std::string& fullPath) {
-    // Find the position of the last slash
-    size_t pos = fullPath.find_last_of("/\\");
-    
-    // Extract the substring from the character after the last slash to the end
-    return (pos == std::string::npos) ? fullPath : fullPath.substr(pos + 1);
+std::string getBaseFilename(const std::string &fullPath) {
+  // Find the position of the last slash
+  size_t pos = fullPath.find_last_of("/\\");
+
+  // Extract the substring from the character after the last slash to the end
+  return (pos == std::string::npos) ? fullPath : fullPath.substr(pos + 1);
 }
 bool create_log_zip(const char *zip_file) {
-  struct zip_t *archive = zip_open(zip_file, ZIP_DEFAULT_COMPRESSION_LEVEL, 'w');
-  std::vector<std::string> log_files = {ITEMZ_LOG};
+  std::vector<std::string> entries;
+  DIR *dir = NULL;
+  struct dirent *entry = NULL;
+
+  struct zip_t *archive =
+      zip_open(zip_file, ZIP_DEFAULT_COMPRESSION_LEVEL, 'w');
   if (!archive) {
     log_error("[ZIP] Failed to create archive: %s", zip_file);
     return false;
   }
 
-  if(if_exists(DUMPER_LOG)){
-    log_files.push_back(DUMPER_LOG);
+  // Open the directory
+  dir = opendir(APP_PATH("logs"));
+  if (!dir) {
+    log_error("Unable to open directory");
+    return false;
   }
 
-  for (const auto& file : log_files) {
+  // Read the directory entries
+  while ((entry = readdir(dir)) != NULL) {
+    // Skip the current and parent directories
+    if (std::string(entry->d_name) == "." ||
+        std::string(entry->d_name) == "..") {
+      continue;
+    }
+
+    // Construct the full path
+    std::string fullPath = std::string(APP_PATH("logs/")) + entry->d_name;
+
+    // Add the full path to the vector
+    entries.push_back(fullPath);
+  }
+
+  // Close the directory
+  closedir(dir);
+
+  for (const auto &file : entries) {
     if (zip_entry_open(archive, getBaseFilename(file).c_str()) != 0) {
-       log_error("[ZIP] Failed to add file to archive: %s", file.c_str());
-       zip_close(archive);
-       return false;
+      log_error("[ZIP] Failed to add file to archive: %s", file.c_str());
+      zip_close(archive);
+      return false;
       // continue;
     }
 
@@ -2483,4 +2547,214 @@ bool create_log_zip(const char *zip_file) {
 
   zip_close(archive);
   return true;
+}
+bool GetVappDetails(item_t &item) {
+
+  std::vector<uint8_t> sfo_data = readFile(item.info.sfopath);
+  if (sfo_data.empty())
+    return false;
+
+  SfoReader sfo(sfo_data);
+
+  item.info.name = sfo.GetValueFor<std::string>("TITLE");
+  if (get->lang != 1) {
+    item.info.name = sfo.GetValueFor<std::string>(
+        fmt::format("TITLE_{0:}{1:d}", (get->lang < 10) ? "0" : "", get->lang));
+    if (item.info.name.empty())
+      item.info.name = sfo.GetValueFor<std::string>("TITLE");
+  }
+
+  //    log_info("[XMB OP] %s is a favorite", item.info.id.c_str());
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "CONTENT_ID", sfo.GetValueFor<std::string>("CONTENT_ID")));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "VERSION", sfo.GetValueFor<std::string>("VERSION")));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "ATTRIBUTE_INTERNAL",
+      std::to_string(sfo.GetValueFor<int>("ATTRIBUTE_INTERNAL"))));
+  for (int z = 1; z <= 7; z++) { // SERVICE_ID_ADDCONT_ADD_1
+    std::string s = sfo.GetValueFor<std::string>(
+        fmt::format("SERVICE_ID_ADDCONT_ADD_{0:d}", z));
+    if (!s.empty()) {
+      item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+          fmt::format("SERVICE_ID_ADDCONT_APPINFO_ADD_{0:d}", z), s));
+      std::string sub = s.substr(s.find("-") + 1);
+      sub.pop_back(), sub.pop_back(), sub.pop_back();
+      item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+          fmt::format("SERVICE_ID_ADDCONT_ADD_{0:d}", z), sub));
+    }
+  }
+  for (int z = 1; z <= 4; z++) // USER_DEFINED_PARAM_
+    item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+        fmt::format("USER_DEFINED_PARAM_{0:d}", z),
+        std::to_string(
+            sfo.GetValueFor<int>(fmt::format("USER_DEFINED_PARAM_{0:d}", z)))));
+
+  for (int z = 0; z <= 30; z++) { // TITLE_
+    std::string key = fmt::format("TITLE_{0:}{1:d}", (z < 10) ? "0" : "", z);
+    item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+        key, sfo.GetValueFor<std::string>(key)));
+  }
+  // log_info("tid: %s, cat: %s", fname.c_str(),
+  // sfo.GetValueFor<std::string>("CATEGORY").c_str()); if its a patch just set
+  // it to GD
+  if (sfo.GetValueFor<std::string>("CATEGORY") == "gp")
+    item.extra_data.extra_sfo_data.insert(
+        std::pair<std::string, std::string>("CATEGORY", "gd"));
+  else
+    item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+        "CATEGORY", sfo.GetValueFor<std::string>("CATEGORY")));
+
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "APP_TYPE", std::to_string(sfo.GetValueFor<int>("APP_TYPE"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "APP_VER", sfo.GetValueFor<std::string>("APP_VER")));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "SYSTEM_VER", std::to_string(sfo.GetValueFor<int>("SYSTEM_VER"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "PARENTAL_LEVEL",
+      std::to_string(sfo.GetValueFor<int>("PARENTAL_LEVEL"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "DOWNLOAD_DATA_SIZE",
+      std::to_string(sfo.GetValueFor<int>("DOWNLOAD_DATA_SIZE"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "ATTRIBUTE", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "ATTRIBUTE2", std::to_string(sfo.GetValueFor<int>("ATTRIBUTE2"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "REMOTE_PLAY_KEY_ASSIGN",
+      std::to_string(sfo.GetValueFor<int>("REMOTE_PLAY_KEY_ASSIGN"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "PT_PARAM", std::to_string(sfo.GetValueFor<int>("PT_PARAM"))));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "INSTALL_DIR_SAVEDATA",
+      sfo.GetValueFor<std::string>("INSTALL_DIR_SAVEDATA")));
+  item.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>(
+      "IRO_TAG", std::to_string(sfo.GetValueFor<int>("IRO_TAG"))));
+
+  item.info.version = item.extra_data.extra_sfo_data["APP_VER"];
+
+  return true;
+}
+
+bool getSfoDetails(std::string path, std::string &titleID,
+                   std::string &contentID, std::string &AppTitle) {
+  std::string sfo_path = path + "/sce_sys/param.sfo";
+  if (!if_exists(sfo_path.c_str())) {
+    msgok(MSG_DIALOG::WARNING,
+          "Unable to open sce_sys/param.json OR sce_sys/param.sfo, did you "
+          "select the right directory??");
+    return false;
+  }
+
+  std::vector<uint8_t> sfo_data = readFile(sfo_path);
+  if (sfo_data.empty()) {
+    msgok(MSG_DIALOG::WARNING, "Unable to read sce_sys/param.sfo");
+    return false;
+  }
+  SfoReader sfo(sfo_data);
+  titleID = sfo.GetValueFor<std::string>("TITLE_ID");
+  contentID = sfo.GetValueFor<std::string>("CONTENT_ID");
+  AppTitle = sfo.GetValueFor<std::string>(
+      fmt::format("TITLE_{0:}{1:d}", (get->lang < 10) ? "0" : "", get->lang));
+
+  if (AppTitle.empty())
+    AppTitle = sfo.GetValueFor<std::string>("TITLE");
+
+  return true;
+}
+
+void UpdateParamSfo(std::string path) {
+  std::string SfoPath = path + "/sce_sys/param.sfo";
+  std::vector<uint8_t> sfo_data = readFile(SfoPath);
+  if (sfo_data.empty()) {
+    msgok(MSG_DIALOG::WARNING, "Unable to read sce_sys/param.sfo");
+    return;
+  }
+  modify_sfo(SfoPath.c_str(), "DOWNLOAD_DATA_SIZE", "0");
+}
+int sys_unmount(const char *syspath, int flags) {
+  return syscall(22, syspath, flags);
+}
+bool ForceUnmountVapp(std::string syspath) {
+
+  std::string SfoPath = syspath + "/sce_sys/param.sfo";
+  if (!if_exists(SfoPath.c_str())) {
+    log_info("was not mounted before");
+    return true;
+  }
+  log_info("param.sfo exists, trying to unmount");
+  int retries = 0;
+  do {
+    if (retries == 0)
+      log_info("unmounting %s", syspath.c_str());
+    else
+      log_info("retrying attempt %s unmounting %i | prev. error %s",
+               syspath.c_str(), retries, strerror(errno));
+
+    if (retries >= 20) {
+      break;
+    }
+    retries++;
+
+  } while (sys_unmount(syspath.c_str(), 0x80000LL) < 0);
+
+  return !if_exists(SfoPath.c_str());
+}
+
+int custom_Confirmation_Msg(std::string msg, std::string msg1,
+                            std::string msg2) {
+
+  sceMsgDialogTerminate();
+  // ds
+
+  sceMsgDialogInitialize();
+  OrbisMsgDialogParam param;
+  OrbisMsgDialogButtonsParam buttonsParam;
+  OrbisMsgDialogParamInitialize(&param);
+  param.mode = ORBIS_MSG_DIALOG_MODE_USER_MSG;
+
+  OrbisMsgDialogUserMessageParam userMsgParam;
+  memset(&userMsgParam, 0, sizeof(userMsgParam));
+  userMsgParam.msg = msg.c_str();
+  userMsgParam.buttonType = ORBIS_MSG_DIALOG_BUTTON_TYPE_2BUTTONS;
+  buttonsParam.msg1 = msg1.c_str();
+  buttonsParam.msg2 = msg2.c_str();
+  userMsgParam.buttonsParam = &buttonsParam;
+  param.userMsgParam = &userMsgParam;
+  // cv
+  if (0 < sceMsgDialogOpen(&param))
+    return NO;
+
+  OrbisCommonDialogStatus stat;
+  //
+  while (1) {
+    stat = sceMsgDialogUpdateStatus();
+    if (stat == ORBIS_COMMON_DIALOG_STATUS_FINISHED) {
+
+      OrbisMsgDialogResult result;
+      memset(&result, 0, sizeof(result));
+
+      sceMsgDialogGetResult(&result);
+
+      return result.buttonId;
+    }
+  }
+  // c
+  return NO;
+}
+
+bool checkTrophyMagic(const std::string &trophy) {
+  std::ifstream trophy_file(trophy, std::ios::binary);
+  if (!trophy_file.good())
+    return false;
+
+  char magic[4];
+  trophy_file.read(magic, 4);
+  trophy_file.close();
+
+  log_info("trophy magic: %x %x %x %x", magic[0], magic[1], magic[2], magic[3]);
+
+  const char expectedMagic[4] = {0xDC, 0xA2, 0x4D, 0x00};
+  return std::memcmp(magic, expectedMagic, 4) == 0;
 }

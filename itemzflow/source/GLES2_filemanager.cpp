@@ -16,6 +16,7 @@ extern vec2 resolution,
 extern vec3 p_off;
 fs_res fs_ret;
 
+
 std::vector<std::string> global_pkg_folder_right; 
 std::vector<std::string> global_pkg_folder_left; 
 
@@ -210,6 +211,14 @@ update_idx:
     }
     case SQU:
     { // select item
+
+        if (fs_ret.filter == FS_PKG) {
+            get->setting_bools[BACKGROUND_INSTALL] ^= 1;
+            SaveOptions(get);
+            ani_notify(NOTIFI::INFO, get->setting_bools[BACKGROUND_INSTALL] ? "Background installing is now active" : "Background installing is now deactived", get->setting_bools[BACKGROUND_INSTALL] ? "PKGs will no longer show install progress" : "PKGs will now show install progress");
+            return;
+        }
+        
         update_rela_path(path, l.item_d[idx].info.id);
 
         if (fs_ret.filter == FS_NONE && !file_options)
@@ -261,7 +270,7 @@ update_idx:
                 #if defined(__ORBIS__)
                 std::size_t pos = entry.find_last_of("/\\");  // Find last occurrence of directory separator character
                 std::string filename = (pos == std::string::npos) ? entry : entry.substr(pos + 1);  // Extract substring after directory separator character
-                pkginstall(entry.c_str(), filename.c_str(), true, false, get_active_pkg_folder().size(), i);
+                pkginstall(entry.c_str(), filename.c_str(), !get->setting_bools[BACKGROUND_INSTALL], false, get_active_pkg_folder().size(), i);
                 sleep(1);
                 i++;
                 #endif
@@ -280,7 +289,7 @@ update_idx:
               fw_action_to_fm(SQU);
             else{
 #ifdef __ORBIS__
-                if ((ret = pkginstall(path.c_str(), l.item_d[idx].info.id.c_str(), true, false)) != ITEMZCORE_SUCCESS){
+                if ((ret = pkginstall(path.c_str(), l.item_d[idx].info.id.c_str(), !get->setting_bools[BACKGROUND_INSTALL], false)) != ITEMZCORE_SUCCESS){
                     if (ret == IS_DISC_GAME)
                          ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::OPTION_DOESNT_SUPPORT_DISC), fmt::format("{0:#x}",  ret));
                 }

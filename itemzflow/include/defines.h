@@ -32,7 +32,7 @@
 #define FM_ENTRIES (10) // max num we split bound_box Height, in px
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 05
+#define VERSION_MINOR 06
 
 
 #if defined (__ORBIS__)
@@ -130,6 +130,7 @@
 #define APP_HOME_DATA_FOLDER "/user/app/NPXS29998"
 #define APP_HOME_DATA_TID "NPXS29998"
 #define APP_HOME_HOST_TID "NPXS29999"
+#define WORKSPACE0_TID "BREW00001"
 #define GL_CHECK(stmt) if(glGetError() != GL_NO_ERROR) msgok(MSG_DIALOG::FATAL, "GL_STATEMENT %s: %x", getLangSTR(LANG_STR::FAILED_W_CODE),glGetError());
 #define PS4_OK 0
 #define INIT_FAILED -1

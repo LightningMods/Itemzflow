@@ -37,15 +37,14 @@ struct _trainer_struct
 };
 
 
-struct _update_struct
-{
-    // stores 1 string, if you have more than 1
-    // use a vector of strings and use .size() to get the number of strings
-    std::string update_title, update_tid;
-    std::vector<std::string> update_version, update_size, update_json;
-    std::vector<std::string> update_text;
+struct _update_struct {
+  // stores 1 string, if you have more than 1
+  // use a vector of strings and use .size() to get the number of strings
+  std::string update_title, update_tid;
+  std::vector <int> required_fw;
+  std::vector<std::string> update_version, update_size, update_json;
+  std::vector<std::string> update_text;
 };
-
 static std::map<std::string, u8> patch_type = {
     {"byte",    kpatch_type::byte},
     {"bytes16", kpatch_type::bytes16},
@@ -93,6 +92,7 @@ extern s32 itemflow_pid;
 extern char patcher_notify_icon[64];
 extern struct _trainer_struct trs;
 extern u32 patch_current_index;
+extern u32 patch_count;
 
 extern bool is_using_plugin;
 

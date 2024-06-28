@@ -161,7 +161,6 @@ uint32_t Launch_Daemon(const char* TITLE_ID) {
     return 0;
 }
 
-#define	MNT_UPDATE	0x0000000000010000ULL /* not real mount, just update */
 bool boot_daemon_services()
 {
     std::string ipc_msg;

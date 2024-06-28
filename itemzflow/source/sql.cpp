@@ -16,6 +16,7 @@ char *err_msg = 0;
 
 sqlite3 *db = NULL;
 int count = 0;
+static const char* IF_PS5_db_path = "/data/itemzflow/USB_Apps.db";
 
 // Function to sanitize a string for use in SQL
 std::string sanitizeString(const std::string& str)
@@ -549,4 +550,17 @@ bool Fix_Game_In_DB(item_t &item, bool is_ext_hdd) {
   sqlite3_close(db), db = NULL;
 
   return true;
+}
+
+
+int retrieveFVapps(ThreadSafeVector<item_t>& out_vec, Sort_Category category, Favorites &favs) {
+     // EXPERIMENTAL NOT AVAILABLE AT RELEASE
+     // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+    return 0;
+}
+
+bool Inject_SQL_app(const std::string& tidValue, const std::string& sys_path, const std::string& contentID, const std::string& AppTitle) {
+     // EXPERIMENTAL NOT AVAILABLE AT RELEASE
+     // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+     return false;
 }

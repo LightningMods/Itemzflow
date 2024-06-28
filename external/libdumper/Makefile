@@ -8,7 +8,7 @@ TargetFile := libdumper
 AllTarget = $(OutPath)/$(TargetFile).a 
 
 include $(ORBISDEV)/make/ps4sdklib.mk
-CompilerFlagsCpp += -std=c++17 -DHAVE_CONFIG_H -D_U_="__attribute__((unused))" -D__ORBIS__=1 -D_ORBIS_ -DNDEBUG -D_BSD_SOURCE -fexceptions -frtti
+CompilerFlagsCpp += -std=c++17 -DHAVE_CONFIG_H -D_U_="__attribute__((unused))" -D__ORBIS__=1 -D_ORBIS_ -DNDEBUG -D_BSD_SOURCE -fno-exceptions -frtti
 IncludePath += -I$(ORBISDEV)/usr/include -I$(ORBISDEV)/usr/include/c++/v1 -Iinclude  
 
 

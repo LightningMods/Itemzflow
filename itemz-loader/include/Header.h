@@ -178,6 +178,9 @@ LncAppParam;
 
 extern uint8_t daemon_eboot[];
 extern int32_t daemon_eboot_size;
+
+#define	MNT_UPDATE	0x0000000000010000ULL /* not real mount, just update */
+int mountfs(const char* device, const char* mountpoint, const char* fstype, const char* mode, uint64_t flags);
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -437,18 +437,21 @@ std::string check_from_url(std::string &url_) {
     return std::string();
   }
 
-  try {
-    json j = json::parse(JSON);
-    if (j.contains("hash")) {
-      return j["hash"].get<std::string>();
-    } else {
-      log_error("Update format not found");
+    auto j = nlohmann::json::parse(JSON, nullptr, false);
+    
+    // Check if the parsing was successful
+    if (j.is_discarded()) {
+        log_error("Could not parse update json");
+        return std::string();
     }
-  } catch (json::parse_error &e) {
-    log_error("could not parse Update json");
-  } catch (json::type_error &e) {
-    log_error("JSON type error: %s", e.what());
-  }
+    
+    // Check if the "hash" key exists and is a string
+    if (j.contains("hash") && j["hash"].is_string()) {
+        return j["hash"].get<std::string>();
+    } else {
+        log_error("Update format not found");
+        return std::string();
+    }
 
   return std::string();
 }
@@ -490,8 +493,10 @@ bool fetch_json(const std::string &url, std::string &readBuffer, bool &is_connec
   return false;
 }
 
-bool Fetch_Update_Details(const std::string &title_id, const std::string &title, _update_struct &updateStruct, bool &is_connection_issue) {
-  std::string url = PATCH_API_URL + title_id;
+bool Fetch_Update_Details(const std::string &title_id, const std::string &title,
+                          _update_struct &updateStruct,
+                          bool &is_connection_issue) {
+  std::string url = "https://api.psxpatches.com/patches/" + title_id;
   std::string readBuffer;
   // clear the whole struct
   updateStruct.update_title.clear();
@@ -499,30 +504,53 @@ bool Fetch_Update_Details(const std::string &title_id, const std::string &title,
   updateStruct.update_version.clear();
   updateStruct.update_size.clear();
   updateStruct.update_json.clear();
+  updateStruct.required_fw.clear();
 
-  //log_info("Fetch_Update_Details: %s", url.c_str());
+  // log_info("Fetch_Update_Details: %s", url.c_str());
   if (!fetch_json(url, readBuffer, is_connection_issue)) {
     log_error("Failed to fetch update details for %s", title.c_str());
     return false;
   }
 
-  try {
-    auto json = nlohmann::json::parse(readBuffer);
-    log_info("Json: %s", json.dump().c_str());
-    updateStruct.update_title = title;
-    updateStruct.update_tid = title_id;
+  // Parse the JSON
+  auto json = nlohmann::json::parse(readBuffer, nullptr, false);
 
+  // Check if the parsing was successful
+  if (json.is_discarded()) {
+    log_error("Failed to parse update json");
+    return false;
+  }
+
+  log_info("Json: %s", json.dump().c_str());
+  updateStruct.update_title = title;
+  updateStruct.update_tid = title_id;
+
+  // Check if "patches" key exists and is an array
+  if (json.contains("patches") && json["patches"].is_array()) {
     for (const auto &patch : json["patches"]) {
-      updateStruct.update_version.push_back(patch["version"].get<std::string>());
-      updateStruct.update_size.push_back(std::to_string(patch["size"].get<size_t>()));
-      updateStruct.update_json.push_back(patch["endpoint"].get<std::string>());
+      if (patch.contains("version") && patch["version"].is_string() &&
+          patch.contains("size") && patch["size"].is_number() &&
+          patch.contains("endpoint") && patch["endpoint"].is_string()) {
+        updateStruct.update_version.push_back(
+            patch["version"].get<std::string>());
+        updateStruct.update_size.push_back(
+            std::to_string(patch["size"].get<size_t>()));
+        updateStruct.update_json.push_back(
+            patch["endpoint"].get<std::string>());
+        // required_fw
+        if (patch.contains("required_fw") && patch["required_fw"].is_number())
+          updateStruct.required_fw.push_back(patch["required_fw"].get<int>());
+        else
+          updateStruct.required_fw.push_back(0);
+
+
+      } else {
+        log_error("Invalid patch format in json");
+        return false;
+      }
     }
-    // print out the struct
-    // for (auto &v : updateStruct.update_json) {
-    //   log_info("update_json: %s", v.c_str());
-    // }
-  } catch (nlohmann::json::exception &e) {
-    log_error("Failed to parse update json: %s", e.what());
+  } else {
+    log_error("No patches found or patches is not an array");
     return false;
   }
 

@@ -234,13 +234,14 @@ static GLuint CreateProgram( void )
 
 // libfreetype-gl pass last composed Text_Length in pixel, we use to align text!
 extern float tl;
+extern GLuint incomp_icon;
 
-
-// ------------------------------------------------------------------- main ---
-void GLES2_ani_init(int width, int height)
-{
-    vec4 color  = { 200., 0., 200., 1. };
-    line_buffer = VertexBuffer( "vertex:3f,color:4f" );
+    // ------------------------------------------------------------------- main
+    // ---
+    void
+    GLES2_ani_init(int width, int height) {
+  vec4 color = {200., 0., 200., 1.};
+  line_buffer = VertexBuffer("vertex:3f,color:4f");
 
 #if 0 // rects
     vec2 pen = { .5, .5 };
@@ -278,8 +279,10 @@ for (int i = 0; i < 10; ++i)
         kofi = load_png_asset_into_texture(asset_path("notis/kofi.png"));
     if (profile_pic == GL_NULL)
         profile_pic = load_png_asset_into_texture(asset_path("notis/profile.png"));
+    if(incomp_icon == GL_NULL)
+        incomp_icon = load_png_asset_into_texture(asset_path("incomp.png"));
 
- vec2 pen, origin;
+    vec2 pen, origin;
 
     origin.x = width /2 + 100;
     origin.y = height/2 - 200;

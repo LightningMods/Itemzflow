@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ps4sdk.h>
 #include <stdlib.h>  // malloc, qsort, free
+#include <string>
 #include <unistd.h>  // close
 #include <sys/signal.h>
 #include "defines.h"
@@ -347,12 +348,69 @@ bool init_daemon_services(bool redirect) {
     return true;
 }
 
+void rotateLogs() {
+    DIR *dir;
+    struct dirent *entry;
+    std::vector<std::string> logFiles;
+    char filepath[256];
+
+    // Open the log directory
+    dir = opendir(APP_PATH("logs"));
+    if (!dir) {
+        perror("Unable to open log directory");
+        return;
+    }
+
+    // Collect log files
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, "itemzflow_app", strlen("itemzflow_app")) == 0) {
+            snprintf(filepath, sizeof(filepath), "%s%s", APP_PATH("logs"), entry->d_name);
+            logFiles.emplace_back(filepath);
+        }
+    }
+    closedir(dir);
+
+    // Sort log files by modification time
+    std::sort(logFiles.begin(), logFiles.end(), [](const std::string &a, const std::string &b) {
+        struct stat aStat, bStat;
+        stat(a.c_str(), &aStat);
+        stat(b.c_str(), &bStat);
+        return aStat.st_mtime < bStat.st_mtime;
+    });
+
+    // If there are more than MAX_LOG_FILES, delete the oldest ones
+    while (logFiles.size() > 5) {
+        std::cout << "Deleting oldest log: " << logFiles.front() << std::endl;
+        remove(logFiles.front().c_str());
+        logFiles.erase(logFiles.begin());
+    }
+}
 
 int Start_IF_internal_Services(const char* launch_q)
 {
     int ret = 0;
-    unlink(ITEMZ_LOG);
     mkdir(APP_PATH(""), 0777);
+
+    if(if_exists(ITEMZ_LOG)){ 
+        std::string itemz_log_last_old = std::string(APP_PATH("logs/")) + "itemzflow_app_Launch_#2.log";
+        std::string itemz_log_last = std::string(APP_PATH("logs/")) + "itemzflow_app_Launch_#3.log";
+        if(if_exists(itemz_log_last_old.c_str())){
+           copyFile(itemz_log_last_old, itemz_log_last, false);
+        }
+       
+        itemz_log_last = std::string(APP_PATH("logs/itemzflow_app_Last_Launch.log"));
+
+        if(if_exists(itemz_log_last.c_str())){
+           copyFile(itemz_log_last, itemz_log_last_old, false);
+        }
+        unlink(itemz_log_last.c_str());
+
+        copyFile(ITEMZ_LOG, itemz_log_last, false);
+        unlink(ITEMZ_LOG);
+
+       rotateLogs();
+    }
+    
 
     /*-- INIT LOGGING FUNCS --*/
     log_set_quiet(false);
@@ -525,7 +583,7 @@ int Start_IF_internal_Services(const char* launch_q)
     //dont_show_donate_message
     if (!if_exists("/user/app/ITEM00001/support.flag")){
         ani_notify(NOTIFI::KOFI, getLangSTR(LANG_STR::CONSIDER_SUPPORT), "https://ko-fi.com/lightningmods");
-        msgok(MSG_DIALOG::NORMAL, "If you would like to see future itemzflow updates consider supporting the project on ko-fi @ https://ko-fi.com/lightningmods");
+       // msgok(MSG_DIALOG::NORMAL, "If you would like to see future itemzflow updates consider supporting the project on ko-fi @ https://ko-fi.com/lightningmods");
     }
     // all fine.
     log_debug("Itemzflow Initiated Successfully");

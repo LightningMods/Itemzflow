@@ -1,4 +1,5 @@
 #include "defines.h"
+#include <future>
 #include <utils.h>
 #include <sys/signal.h>
 #include <orbisGl.h>
@@ -27,7 +28,6 @@ OrbisPadConfig *confPad;
 bool flag=true;
 extern ThreadSafeVector<item_t> all_apps;
 std::atomic_bool is_idle = false;
-
 
 
 int    selected_icon;
@@ -349,6 +349,7 @@ void updateController()
         if(orbisPadGetButtonPressed(ORBISPAD_R2))
         {
             reset_idle_timer = true;
+            log_info("R2 pressed");
             // crash();
             /// throw std::runtime_error("Crash");
         }
