@@ -496,7 +496,7 @@ bool fetch_json(const std::string &url, std::string &readBuffer, bool &is_connec
 bool Fetch_Update_Details(const std::string &title_id, const std::string &title,
                           _update_struct &updateStruct,
                           bool &is_connection_issue) {
-  std::string url = "https://api.psxpatches.com/patches/" + title_id;
+  std::string url = PATCH_API_URL + title_id;
   std::string readBuffer;
   // clear the whole struct
   updateStruct.update_title.clear();

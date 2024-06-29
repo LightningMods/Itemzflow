@@ -1062,7 +1062,7 @@ if ((ret = pkginstall(fullpath.c_str(), filename.c_str(), !get->setting_bools[BA
 int FS_HA_Callback(const std::string filename, const std::string fullpath) {
   log_info("curr_opt %i", fs_ret.curr_opt);
 
-  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
+  // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
   // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
   fs_ret.curr_opt = -1;
   return 0;
@@ -1070,8 +1070,8 @@ int FS_HA_Callback(const std::string filename, const std::string fullpath) {
 
 int FS_VAPP_GAME_Callback(std::string filename, std::string fullpath) {
    
-  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
-  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+    // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
+    // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
     fs_ret.curr_opt = -1;
     fs_ret.sub_opt = -1;
     return 0;
@@ -2207,15 +2207,12 @@ static void game_not_found_X_dispatch(layout_t &l) {
 }
 
 static void usbvapp_vapp_X_dispatch(int action, layout_t &l) {
-
- 
-  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
-  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+   // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
+   // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
 }
 
 static void game_vapp_X_dispatch(layout_t &l) {
- 
-  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
+  // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
   // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
 }
 
