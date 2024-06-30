@@ -189,36 +189,69 @@ Shader=0
 Invite: https://discord.gg/GvzDdx9GTc
 
 ## Game Patches
+Custom Game Patches for PlayStation 4 Games.
 
-- Downloads from [online database](https://github.com/illusion0001/console-game-patches) via the app or manual install via [zip file](https://assets.illusion0001.com/patch1.zip)
-- Supported formats: `yaml` filename must be `(TITLE_ID).yml, i.e CUSA00547.yml`
-- Startup patches only supports `eboot.bin` for now. PRs are very welcome to support games that use multple elf.
-- YML per game filepath: `/data/GoldHEN/patches/yml/(TITLE_ID).yml`
+### Features
+* `.xml` support
 
-### Patch Syntax
+### Usage
 
-Syntax:
-```json
-{ "type": "", "addr": "", "value": "" }
+### Easy Installation
+- Patches can be configured, install/update via:
+  - [GoldHEN Cheat Manager](https://github.com/GoldHEN/GoldHEN_Cheat_Manager/releases/latest)
+  - [Itemzflow Game Manager](https://github.com/LightningMods/Itemzflow)
+- Run your game.
+
+### Storage
+* Use `FTP` to upload patch files to:
+  * `/user/data/GoldHEN/patches/xml/`
+* Naming conversion for app and patch engine to recognize: `(TitleID).{format}`
+  * e.g. `CUSA00001.xml`
+  * e.g. `CUSA03694.xml`
+
+### Patch types
+
+| `type`    | Info                      | Value (example)        |
+|-----------|---------------------------|------------------------|
+| `byte`    | Hex, 1 byte               | `"0x00"`               |
+| `bytes16` | Hex, 2 bytes              | `"0x0000"`             |
+| `bytes32` | Hex, 4 bytes              | `"0x00000000"`         |
+| `bytes64` | Hex, 8 bytes              | `"0x0000000000000000"` |
+| `bytes`   | Hex, any size (no spaces) | `"####"`               |
+| `float32` | Float, single             | `"1.0"`                |
+| `float64` | Float, double             | `"1.0"`                |
+| `utf8`    | String, UTF-8*            | `"string"`             |
+| `utf16`   | String, UTF-16*           | `"string"`             |
+
+#### Example patch
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+    <!--
+      This will not be used by the plugin parser.
+      It is only used for generating the files for distribution.
+    -->
+    <TitleID>
+        <ID>EXAMPLE01</ID>
+        <ID>EXAMPLE02</ID>
+    </TitleID>
+    <Metadata Title="Example Game Title"
+              Name="Example Name"
+              Note="Example Note"
+              Author="Example Author"
+              PatchVer="1.0"
+              AppVer="00.34"
+              AppElf="eboot.bin">
+        <PatchList>
+            <!-- This is a code comment, improves code readability. -->
+            <!-- Code comment at end of line is also supported. -->
+            <Line Type="bytes" Address="0x00000000" Value="0102030405060708"/>
+            <Line Type="utf8" Address="0x00000000" Value="Hello World\x00"/>
+        </PatchList>
+    </Metadata>
+</Patch>
 ```
-
-Types:
-
-- `byte`: 1 byte
-- `bytes16`: 2 bytes
-- `bytes32`: 4 bytes
-- `bytes64`: 8 bytes
-- `bytes`: array of bytes (no spaces)
-- `utf8`: utf8 string
-- `utf16`: utf16 string
-
-Examples:
-
-```json
-{ "type": "byte", "addr": "0x01271464", "value": "0x01" },
-{ "type": "bytes", "addr": "0x00402d90", "value": "31c0c3" }
-```
-
 
 ## Donations
 
