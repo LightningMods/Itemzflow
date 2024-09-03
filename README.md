@@ -28,7 +28,16 @@
 - Libz
 
 ## Refs
-- [ShaderToy](shadertoy.com) 
+- [ShaderToy](shadertoy.com)
+
+## Guidelines for reporting an issue
+- BEFORE reporting an issue be sure to upload the app logs via pressing triangle in the itemzflow settings menu and type your issue in the text box (PS4) or grab the logs from the console (PS5)
+- Make sure you try to troubleshoot before creating an issue to ensure accuracy of the info you provide about the issue
+- DO NOT create an issue if your game gets stuck dumping or is slow at dumping as both of those issues are on the users side
+- Be descriptive to ensure all the relavent info is given
+- ANY issue that does not provide a response within 2 days (48 hours) after a maintainer responds will be auto closed for inactivtiy to avoid "ghost" issues
+- if you are crashing downloading covers make sure you have internet and its not being blocked by a DNS
+- Lastly, it may take a few days to a few weeks for a maintainer to respond to an issue, responding is not what we usually do first given a few exceptions, just because we have not responded yet does not mean we are not working on the issue  
 
 # Settings
 
@@ -198,8 +207,8 @@ Custom Game Patches for PlayStation 4 Games.
 
 ### Easy Installation
 - Patches can be configured, install/update via:
-  - [GoldHEN Cheat Manager](https://github.com/GoldHEN/GoldHEN_Cheat_Manager/releases/latest)
-  - [Itemzflow Game Manager](https://github.com/LightningMods/Itemzflow)
+  - [Itemzflow Game Manager](https://pkg-zone.com/details/ITEM00001)
+  - [PS4 Cheat Manager](https://pkg-zone.com/details/CHTM00777)
 - Run your game.
 
 ### Storage
