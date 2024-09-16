@@ -37,7 +37,11 @@
 - Be descriptive to ensure all the relavent info is given
 - ANY issue that does not provide a response within 2 days (48 hours) after a maintainer responds will be auto closed for inactivtiy to avoid "ghost" issues
 - if you are crashing downloading covers make sure you have internet and its not being blocked by a DNS
-- Lastly, it may take a few days to a few weeks for a maintainer to respond to an issue, responding is not what we usually do first given a few exceptions, just because we have not responded yet does not mean we are not working on the issue  
+- Lastly, it may take a few days to a few weeks for a maintainer to respond to an issue, responding is not what we usually do first given a few exceptions, just because we have not responded yet does not mean we are not working on the issue
+
+## PS5 Game compatibility list 
+you can find compatible PS5 Games [HERE](https://docs.google.com/spreadsheets/d/1TjOeFVNDR19ypTY2If099YOmllBaNsk4/edit?usp=sharing&ouid=116927497428698101556&rtpof=true&sd=true)
+
 
 # Settings
 
