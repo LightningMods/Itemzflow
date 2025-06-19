@@ -403,7 +403,7 @@ int fuse_kernel_patches_1100(struct thread *td) {
     return 0;
 
   cpu_disable_wp();
-  struct vfsconf *p = (struct vfsconf *)(kernel_base + 0x01A7F188); // 0x01A7F188
+  struct vfsconf *p = (struct vfsconf *)(kernel_base + 0x01A7FB98); // 0x01A7F188
   // suser_enabled in priv_check_cred
   *ksuser_enabled = 1;
   // add jail friendly for fuse file system
