@@ -521,7 +521,7 @@ void InitScene_5(int width, int height)
 
 
     // the fullscreen image
-    if (!get->setting_bools[using_sb] && get->setting_bools[has_image] && bg_tex == GL_NULL)
+    if (!get->setting_bools[USING_SB] && get->setting_bools[HAS_IMAGE] && bg_tex == GL_NULL)
         bg_tex = load_png_asset_into_texture(get->setting_strings[IMAGE_PATH].c_str());
 
     if (!rdisc_tex)
@@ -973,10 +973,10 @@ int FS_Setting_Callback(std::string filename, std::string fullpath)
     switch (SETTING_V_CURR)
     {
     case CHANGE_BACKGROUND_OPTION:
-        //get->setting_bools[using_sb] = false;
+        //get->setting_bools[USING_SB] = false;
         if(is_png_vaild(fullpath.c_str(), &bg_w, &bg_h)){
             ani_notify(NOTIFI::SUCCESS, getLangSTR(LANG_STR::IMAGE_APPLIED), "");
-            get->setting_bools[has_image] = true;
+            get->setting_bools[HAS_IMAGE] = true;
             get->setting_strings[IMAGE_PATH] = fullpath;
             bg_tex = load_png_asset_into_texture(get->setting_strings[IMAGE_PATH].c_str());
         }
@@ -993,7 +993,7 @@ int FS_Setting_Callback(std::string filename, std::string fullpath)
         #if defined(__ORBIS__)
         if(filename == "Reset Theme to Default.zip"){
            log_info("Reset Theme selected... ");
-           get->setting_bools[using_theme] = false;
+           get->setting_bools[USING_THEME] = false;
            //RESET FONT TO DEFAULT
            get->setting_strings[FNT_PATH] = "/system_ex/app/NPXS20113/bdjstack/lib/fonts/SCE-PS3-RD-R-LATIN.TTF";
            rmdir(APP_PATH("theme"));
@@ -1062,16 +1062,195 @@ if ((ret = pkginstall(fullpath.c_str(), filename.c_str(), !get->setting_bools[BA
 int FS_HA_Callback(const std::string filename, const std::string fullpath) {
   log_info("curr_opt %i", fs_ret.curr_opt);
 
-  // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+  std::string keep_name_path =
+      fullpath + "/" + getFolderName(set.setting_strings[USBVAPP_PATH]);
+
+  switch (fs_ret.curr_opt) {
+  case cf_ops::USBVAPP_OPTS::COPY_DIR_LOCAL_HA: {
+    if (fullpath == set.setting_strings[USBVAPP_PATH] ||
+        set.setting_strings[USBVAPP_PATH] == keep_name_path) {
+      msgok(MSG_DIALOG::WARNING,
+            "Cannot copy the app to the folder it's already in");
+      break;
+    }
+#if defined(__ORBIS__)
+    mkdir(keep_name_path.c_str(), 0777);
+
+    {
+      Timer timer;
+      if (StartAppIOOP(set.setting_strings[USBVAPP_PATH].c_str(),
+                       keep_name_path.c_str())) {
+        // refresh_apps_for_cf(get->sort_by, get->sort_cat);
+        msgok(MSG_DIALOG::NORMAL,
+              fmt::format("Folder has been successfully copied\nTime elapsed: "
+                          "{:.2f} minutes",
+                          timer.GetTotalMinutes()));
+      } else {
+        sceMsgDialogTerminate();
+        msgok(MSG_DIALOG::WARNING, "An error has occurred copying the folder");
+      }
+    }
+#endif
+
+    break;
+  }
+  case cf_ops::USBVAPP_OPTS::CHANGE_DIR_USBVAPP: {
+    loadmsg("changing directory...");
+#if defined(__ORBIS__)
+    std::string titleID, contentID, AppTitle;
+    if(!getSfoDetails(fullpath, titleID, contentID, AppTitle )){
+        log_error("Failed to get SFO details");
+        break;
+    }
+    set.setting_strings[USBAPP_OVERRIDE_TID].clear();
+      
+    title_vbo.clear();
+    std::string sys_path = "/system_ex/app/" + titleID;
+    std::string metapath = "/user/appmeta/" + titleID + "/";
+    std::string sce_sys = sys_path + "/sce_sys";
+        
+    mkdir(sys_path.c_str(), 0777);
+    mkdir(sce_sys.c_str(), 0777);
+
+    if(!ChechSelfsinDir(fullpath + "/sce_sys") || !checkSELFMagic(fullpath + "/eboot.bin")){
+        log_error("Invalid fake signing");
+        msgok(MSG_DIALOG::WARNING, "Not all executables are Fake signed! Fake sign all the executables then try again");
+        break;
+    }
+
+    log_info("fullpath: %s", fullpath.c_str());
+    if(!ForceUnmountVapp(sys_path.c_str())){
+        log_error("Failed to unmount %s", sys_path.c_str());
+        msgok(MSG_DIALOG::WARNING, "Failed to unmount the prev. app");
+        break;
+    }
+
+    if (remount(fullpath.c_str(), sys_path.c_str())  &&
+      EditDataIFPS5DB(titleID, AppTitle, fullpath) &&
+        Inject_SQL_app(titleID, sys_path, contentID, AppTitle)) {
+
+      rmtree(metapath.c_str());
+      unlink(metapath.c_str());
+      mkdir(metapath.c_str(), 0777);
+      copy_dir(sce_sys, metapath);
+
+      for (auto &app : all_apps) {
+        if (app.info.id == WORKSPACE0_TID) {
+          app.info.name = AppTitle;
+         // app.info.id = titleID;
+          break;
+        }
+      }
+      // refresh_apps_for_cf(get->sort_by, get->sort_cat);
+
+      set.setting_strings[USBVAPP_PATH] = fullpath;
+      sceMsgDialogTerminate();
+      ani_notify(NOTIFI::SUCCESS, "Game Dir changed successfully",
+                 fmt::format("Changed to {}", fullpath));
+      // msgok(MSG_DIALOG::NORMAL, "Game Dir changed successfully");
+    } else {
+      sceMsgDialogTerminate();
+      ani_notify(NOTIFI::ERROR, "Game Dir has failed to change",
+                 "Please try again later");
+    }
+#endif
+    break;
+  }
+
+  default:
+    log_error("case not handled");
+    break;
+  }
   fs_ret.curr_opt = -1;
   return 0;
 }
 
 int FS_VAPP_GAME_Callback(std::string filename, std::string fullpath) {
-   
-    // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-    // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+    std::string keep_name_path = fullpath + "/" + getFolderName(all_apps[g_idx].info.vapp_path);
+    log_info("fs_ret.curr_opt %i", fs_ret.curr_opt);
+
+    std::string titleID, contentID, AppTitle;
+
+    switch (fs_ret.curr_opt) {
+        case cf_ops::IO_Options: {
+            switch (fs_ret.sub_opt) {
+                case COPY_DIR: {
+                    if (fullpath == all_apps[g_idx].info.vapp_path ||
+                        all_apps[g_idx].info.vapp_path == keep_name_path) {
+                        msgok(MSG_DIALOG::WARNING, "Cannot copy the app to the folder it's already in");
+                        break;
+                    }
+                    std::string sys_path = "/system_ex/app/" + all_apps[g_idx].info.id;
+
+                    mkdir(keep_name_path.c_str(), 0777);
+#ifdef __ORBIS__
+                    {
+                        Timer timer;
+                        if (StartAppIOOP(all_apps[g_idx].info.vapp_path.c_str(), keep_name_path.c_str())) {
+                            // refresh_apps_for_cf(get->sort_by, get->sort_cat);
+                            msgok(MSG_DIALOG::NORMAL,
+                                  fmt::format("Folder has been successfully copied\nTime elapsed: {:.2f} minutes", timer.GetTotalMinutes()));
+                        } else {
+                            sceMsgDialogTerminate();
+                            msgok(MSG_DIALOG::WARNING, "An error has occurred copying the folder");
+                        }
+                    }
+#endif
+                    break;
+                }
+
+                case MOVE_DIR: {
+                    if (fullpath == all_apps[g_idx].info.vapp_path ||
+                        all_apps[g_idx].info.vapp_path == keep_name_path) {
+                        msgok(MSG_DIALOG::WARNING, "Cannot move app to the folder it's already in");
+                        break;
+                    }
+#ifdef __ORBIS__
+                    log_info("keep_name_path: %s", keep_name_path.c_str());
+                    if (!getSfoDetails(fullpath, titleID, contentID, AppTitle)) {
+                        log_error("Failed to get SFO details");
+                        break;
+                    }
+
+                    mkdir(keep_name_path.c_str(), 0777);
+                    std::string sys_path = "/system_ex/app/" + all_apps[g_idx].info.id;
+                    {
+                        Timer timer;
+                        if (StartAppIOOP(all_apps[g_idx].info.vapp_path.c_str(), keep_name_path.c_str(), true)) {
+                            if (!EditDataIFPS5DB(all_apps[g_idx].info.id, AppTitle, keep_name_path) ||
+                                !Inject_SQL_app(all_apps[g_idx].info.id, sys_path, contentID, AppTitle)) {
+                                msgok(MSG_DIALOG::WARNING, "An error has occurred moving the folder");
+                                break;
+                            }
+
+                            all_apps[g_idx].info.vapp_path = keep_name_path;
+
+                            //chmod_recursive(sys_path.c_str(), 0777);
+                            // fw_action_to_cf(CIR);
+                            // refresh_apps_for_cf(get->sort_by, get->sort_cat);
+                            msgok(MSG_DIALOG::NORMAL,
+                                  fmt::format("Folder has been successfully moved\nTime elapsed: {:.2f} minutes", timer.GetTotalMinutes()));
+                        } else {
+                            sceMsgDialogTerminate();
+                            msgok(MSG_DIALOG::WARNING, "An error has occurred moving the folder");
+                        }
+                    }
+#endif
+                    break;
+                }
+
+                default:
+                    log_error("Case not handled");
+                    break;
+            }
+            break;
+        }
+
+        default:
+            log_error("Case not handled");
+            break;
+    }
+
     fs_ret.curr_opt = -1;
     fs_ret.sub_opt = -1;
     return 0;
@@ -1234,13 +1413,13 @@ static void X_action_settings(int action, layout_t & l)
     case HOME_MENU_OPTION:
     {
         IPC_Client& ipc = IPC_Client::getInstance();
-        get->setting_bools[HomeMenu_Redirection] = get->setting_bools[HomeMenu_Redirection] ? false : true;
+        get->setting_bools[HOMEMENU_REDIRECTION] = get->setting_bools[HOMEMENU_REDIRECTION] ? false : true;
 #if defined(__ORBIS__)
         if (is_connected_app)
         {
-            log_info("Turning Home menu %s", get->setting_bools[HomeMenu_Redirection] ? "ON (ItemzFlow)" : "OFF (Orbis)");
+            log_info("Turning Home menu %s", get->setting_bools[HOMEMENU_REDIRECTION] ? "ON (ItemzFlow)" : "OFF (Orbis)");
 
-            if (get->setting_bools[HomeMenu_Redirection])
+            if (get->setting_bools[HOMEMENU_REDIRECTION])
             {
                 if (ipc.IPCSendCommand(IPC_Commands::ENABLE_HOME_REDIRECT, ipc_msg) == IPC_Ret::NO_ERROR)
                     ani_notify(NOTIFI::INFO, getLangSTR(LANG_STR::REDIRECT_TURNED_ON), "");
@@ -1259,13 +1438,13 @@ static void X_action_settings(int action, layout_t & l)
     case SHOW_BUTTON_OPTION:
     {
 
-        get->setting_bools[Show_Buttons] = get->setting_bools[Show_Buttons] ? false : true;
+        get->setting_bools[SHOW_BUTTONS] = get->setting_bools[SHOW_BUTTONS] ? false : true;
         title_vbo.clear();
         break;
     }
-    case COVER_MESSAGE_OPTION:
+    case KILL_ON_CLOSE:
     {
-        get->setting_bools[cover_message] = get->setting_bools[cover_message] ? false : true;
+        get->setting_bools[STOP_DAEMON_ON_CLOSE] = get->setting_bools[STOP_DAEMON_ON_CLOSE] ? false : true;
         break;
     }
     case FUSE_IP_OPTION:
@@ -1308,8 +1487,8 @@ static void X_action_settings(int action, layout_t & l)
     {
 #ifdef __ORBIS__
         log_info("Reset Theme selected... ");
-        get->setting_bools[using_theme] = false;
-        get->setting_bools[has_image] = false;
+        get->setting_bools[USING_THEME] = false;
+        get->setting_bools[HAS_IMAGE] = false;
         get->setting_strings[IMAGE_PATH].clear();
         //RESET FONT TO DEFAULT
         get->setting_strings[FNT_PATH] = "/system_ex/app/NPXS20113/bdjstack/lib/fonts/SCE-PS3-RD-R-LATIN.TTF";
@@ -1348,7 +1527,7 @@ static void X_action_settings(int action, layout_t & l)
                     ProgressUpdate(((++i * 100) / all_apps.size()), getLangSTR(LANG_STR::DOWNLOADING_COVERS));
                }
 
-            //  get->setting_bools[cover_message] = false;
+            //  get->setting_bools[COVER_MESSAGE] = false;
             //  SaveOptions(get);
 
                 sceMsgDialogTerminate();
@@ -2207,13 +2386,286 @@ static void game_not_found_X_dispatch(layout_t &l) {
 }
 
 static void usbvapp_vapp_X_dispatch(int action, layout_t &l) {
-   // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-   // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+
+  fmt::print("execute {} -> '{}' for '{}'", l.curr_item,
+             l.item_d[l.curr_item].info.name, all_apps[g_idx].info.name);
+  l.vbo_s = ASK_REFRESH;
+  // SET SO THE FUNC KNOWS WHICH OPTION WE WERE ON
+  fs_ret.curr_opt = l.curr_item;
+
+  switch (l.curr_item) {
+  case cf_ops::USBVAPP_OPTS::LAUNCH_USBVAPP: {
+    loadmsg(fmt::format("Launching {} ...", all_apps[g_idx].info.name));
+#if defined(__ORBIS__)
+    std::string vapp_path = set.setting_strings[USBVAPP_PATH];
+    log_info("vapp path: %s", vapp_path.c_str());
+
+    std::string titleID, contentID, AppTitle;
+    if (!getSfoDetails(vapp_path, titleID, contentID, AppTitle)) {
+      log_error("Failed to get SFO details");
+      return;
+    }
+
+    std::string sys_path = "/system_ex/app/" + titleID;
+    std::string metapath = "/user/appmeta/" + titleID + "/";
+    std::string sce_sys = vapp_path + "/sce_sys";
+    std::string trophy_path = sce_sys + "/trophy/trophy00.trp";
+    std::string dl0_path = "/mnt/sandbox/" + titleID+ "_000/download0";
+    std::string dl1_path = "/mnt/sandbox/" + titleID+ "_001/download0";
+    std::string dl2_path = "/mnt/sandbox/" + titleID + "_002/download0";///user/download/CUSA03980/download0_info.dat
+    std::string dl0_info = "/user/download/" + titleID + "/download0_info.dat";
+    std::string dl0_dat = "/user/download/" + titleID + "/download0.dat";
+
+    UpdateParamSfo(vapp_path);
+
+    if(!ChechSelfsinDir(vapp_path + "/sce_sys") || !checkSELFMagic(vapp_path + "/eboot.bin")){
+        log_error("Invalid fake signing");
+        msgok(MSG_DIALOG::WARNING, "Not all executables are Fake signed! Fake sign all the executables then try again");
+        break;
+    }
+
+    mkdir("/user/download/", 0777);
+    mkdir(std::string("/user/download/" + titleID).c_str(), 0777);
+    touch_file(dl0_info.c_str());
+    unlink(dl0_path.c_str());
+    unlink(dl1_path.c_str());
+    touch_file(dl0_dat.c_str());
+    unlink(dl2_path.c_str());
+
+    if(checkTrophyMagic(trophy_path.c_str())){
+      log_error("Trophy file is signed, removing...");
+      unlink(trophy_path.c_str());
+    }
+    else{
+        log_error("Trophy file is not signed, skipping...");
+    }
+
+    mkdir(sys_path.c_str(), 0777);
+
+
+    if (!set.setting_strings[USBAPP_OVERRIDE_TID].empty()) {
+      titleID = set.setting_strings[USBAPP_OVERRIDE_TID];
+    }
+    // chmod_recursive(sys_path.c_str(), 0777);
+    last_vapp = titleID;
+    Launch_App(titleID);
+#endif
+    break;
+  }
+  case cf_ops::USBVAPP_OPTS::COPY_DIR_LOCAL_HA:
+  case cf_ops::USBVAPP_OPTS::CHANGE_DIR_USBVAPP: {
+    log_debug("Starting FM with opt: %i", fs_ret.curr_opt);
+    StartFileBrowser((view_t)v_curr, ls_p, FS_HA_Callback, FS_FOLDER);
+    break;
+  }
+  case cf_ops::USBVAPP_OPTS::OVERRIDE_TID: {
+
+    char out[600];
+    std::string tmp = "BREW00001";
+    std::string titleID, contentID, AppTitle;
+    std::string sfo_path = set.setting_strings[USBVAPP_PATH] + "/sce_sys/param.sfo";
+    if (set.setting_strings[USBAPP_OVERRIDE_TID].empty()) {
+#if defined(__ORBIS__)
+      if (!getSfoDetails(set.setting_strings[USBVAPP_PATH], titleID, contentID, AppTitle)) {
+        log_error("Failed to get SFO details");
+        break;
+      }
+#endif
+    } else {
+      tmp = set.setting_strings[USBAPP_OVERRIDE_TID];
+    }
+#if defined(__ORBIS__)
+    if (Keyboard("Title ID Override", tmp.c_str(), &out[0])) {
+      if (!filter_entry_on_IDs(out)) {
+        msgok(MSG_DIALOG::WARNING, "Title ID format is not valid");
+        break;
+      }
+      set.setting_strings[USBAPP_OVERRIDE_TID] = out;
+      ani_notify(NOTIFI::SUCCESS, "Title ID override has been set",
+                 set.setting_strings[USBAPP_OVERRIDE_TID]);
+    }
+#endif
+
+    title_vbo.clear();
+
+    break;
+  }
+  case cf_ops::USBVAPP_OPTS::SCAN_FOR_APPS: {
+#if defined(__ORBIS__)
+    if (ScanForVapps()) {
+      ani_notify(NOTIFI::SUCCESS, "Successfully scanned for apps", "");
+      fw_action_to_cf(CIR);
+      refresh_apps_for_cf(get->sort_by, get->sort_cat);
+    }
+#endif
+
+    break;
+  }
+  default:
+    log_error("switch not handled");
+    break;
+  }
 }
 
 static void game_vapp_X_dispatch(layout_t &l) {
-  // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+  fmt::print("execute {} -> '{}' for '{}'", l.curr_item,
+             l.item_d[l.curr_item].info.name, all_apps[g_idx].info.name);
+  l.vbo_s = ASK_REFRESH;
+  // SET SO THE FUNC KNOWS WHICH OPTION WE WERE ON
+  fs_ret.curr_opt = l.curr_item;
+  std::string titleID = all_apps[g_idx].info.id;
+  std::string contentID = all_apps[g_idx].extra_data.extra_sfo_data["CONTENT_ID"];
+  std::string AppTitle = all_apps[g_idx].info.name;
+
+  std::string sys_path = "/system_ex/app/" + all_apps[g_idx].info.id;
+  std::string metapath = "/user/appmeta/" + all_apps[g_idx].info.id + "/";
+  std::string sce_sys = sys_path + "/sce_sys";
+  std::string sfo_sys = sys_path + "/sce_sys/param.sfo";
+  std::string trophy_path = sce_sys + "/trophy/trophy00.trp"; ///mnt/sandbox/CUSA03980_000/download0
+  std::string dl0_path = "/mnt/sandbox/" + all_apps[g_idx].info.id + "_000/download0";
+  std::string dl1_path = "/mnt/sandbox/" + all_apps[g_idx].info.id + "_001/download0";
+  std::string dl2_path = "/mnt/sandbox/" + all_apps[g_idx].info.id + "_002/download0";///user/download/CUSA03980/download0_info.dat
+  std::string dl0_info = "/user/download/" + all_apps[g_idx].info.id + "/download0_info.dat";
+
+  switch (l.curr_item) {
+  case cf_ops::VAPP_OPTS::LAUNCH_VAPP: {
+    loadmsg(fmt::format("Launching {} ...", all_apps[g_idx].info.name));
+    mkdir(sys_path.c_str(), 0777);
+    mkdir("/user/download/", 0777);
+    mkdir(std::string("/user/download/" + all_apps[g_idx].info.id).c_str(), 0777);
+    touch_file(dl0_info.c_str());
+    unlink(dl0_path.c_str());
+    unlink(dl1_path.c_str());
+    unlink(dl2_path.c_str());
+#if defined(__ORBIS__)
+
+    if(checkTrophyMagic(trophy_path.c_str())){
+      log_error("Trophy file is signed, removing...");
+      unlink(trophy_path.c_str());
+    }
+    else{
+        log_error("Trophy file is not signed, skipping...");
+    }
+
+
+    if(if_exists(sfo_sys.c_str())){
+       Launch_App(title_id.get());
+       break;
+    }
+
+    if(!ForceUnmountVapp(sys_path.c_str())){
+        log_error("Failed to unmount %s", sys_path.c_str());
+        break;
+    }
+
+    if (!remount(all_apps[g_idx].info.vapp_path.c_str(), sys_path.c_str())) {
+      msgok(MSG_DIALOG::WARNING, "Unable to Launch Game\n\nError: DAEMON_SAID_NO");
+      return;
+    }
+
+    if (!Inject_SQL_app(all_apps[g_idx].info.id, sys_path, contentID, AppTitle)) {
+      msgok(MSG_DIALOG::WARNING,
+            "Unable to Launch Game\n\nError: APP_INJECTOR_SAID_NO");
+      return;
+    }
+
+    if (!if_exists(metapath.c_str())){
+      mkdir(metapath.c_str(), 0777);
+      copy_dir(sce_sys, metapath);
+    }
+
+   // chmod_recursive(all_apps[g_idx].info.vapp_path.c_str(), 0777);
+
+    Launch_App(title_id.get());
+#endif
+    break;
+  }
+  case cf_ops::IO_Options: {
+    if (l.item_d[l.curr_item].multi_sel.is_active) {
+      log_info("Multi sel is active");
+      if (skipped_first_X) {
+        fs_ret.sub_opt = l.item_d[l.curr_item].multi_sel.pos.y;
+        switch (l.item_d[l.curr_item].multi_sel.pos.y) {
+        case COPY_DIR:
+        case MOVE_DIR:
+          StartFileBrowser((view_t)v_curr, ls_p, FS_VAPP_GAME_Callback,
+                           FS_FOLDER);
+          break;
+        case DELETE_DIR:
+#if defined(__ORBIS__)
+          if (Confirmation_Msg(
+                  "Do you really want to delete the app folder??") == NO) {
+            return;
+          }
+          loadmsg(
+              fmt::format("Deleting {} ...", all_apps[g_idx].info.vapp_path));
+          if (rmtree(all_apps[g_idx].info.vapp_path.c_str())) {
+            sceMsgDialogTerminate();
+            ani_notify(NOTIFI::SUCCESS, "App was successfully deleted", "");
+            if (Confirmation_Msg("Do you want to remove the vAPP also? "
+                                 "(removes it from the home menu too)") ==
+                YES) {
+              if (EditDataIFPS5DB(all_apps[g_idx].info.id, "", "", true)) {
+                // ani_notify(NOTIFI::SUCCESS, fmt::format("Successfully removed
+                // {}", all_apps[g_idx].info.id), "");
+                fw_action_to_cf(CIR);
+                refresh_apps_for_cf(get->sort_by, get->sort_cat);
+              } else
+                ani_notify(NOTIFI::ERROR, "Failed to remove VAPP", "");
+            }
+          } else {
+            sceMsgDialogTerminate();
+            ani_notify(NOTIFI::ERROR, "An error as occured deleting the folder",
+                       "");
+          }
+#endif
+
+          break;
+        }
+
+        skipped_first_X = false;
+        l.item_d[l.curr_item].multi_sel.is_active = false;
+      } else {
+        log_info("[MOVE] Skipped first X.");
+        skipped_first_X = true;
+      }
+
+      if (l.item_d[l.curr_item].multi_sel.pos.x == 2)
+        l.item_d[l.curr_item].multi_sel.pos.x = 0; // EDITABLE
+      else
+        l.item_d[l.curr_item].multi_sel.pos.x = 1;
+    }
+    break;
+  }
+  case cf_ops::VAPP_OPTS::REMOVE_VAPP: {
+#if defined(__ORBIS__)
+    if (EditDataIFPS5DB(all_apps[g_idx].info.id, "", "", true)) {
+      ani_notify(
+          NOTIFI::SUCCESS,
+          fmt::format("Successfully removed {}", all_apps[g_idx].info.id), "");
+      fw_action_to_cf(CIR);
+      refresh_apps_for_cf(get->sort_by, get->sort_cat);
+    } else
+      ani_notify(NOTIFI::ERROR, "Failed to remove VAPP", "");
+#endif
+    break;
+  }
+  case cf_ops::VAPP_OPTS::SHOW_APP_INFO: {
+    if (l.item_d[l.curr_item].multi_sel.is_active) {
+      log_info("Multi sel is active");
+      if (skipped_first_X) {
+        skipped_first_X = false;
+        l.item_d[l.curr_item].multi_sel.is_active = false;
+      } else {
+        log_info("[MOVE] Skipped first X");
+        skipped_first_X = true;
+      }
+      l.item_d[l.curr_item].multi_sel.pos.x = 1;
+    }
+
+    break;
+  }
+  }
 }
 
 void fw_action_to_cf(int button)
@@ -2288,7 +2740,6 @@ void fw_action_to_cf(int button)
 
             favs.clear();
             // game save clear
-            gm_save.is_loaded = false;
             if(is_vapp(all_apps[g_idx].info.id)){ // REFRESH_HOSTAPP=Refresh Hostapp
                 if(all_apps[g_idx].info.id == APP_HOME_HOST_TID)
                    gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(LANG_STR::REFRESH_HOSTAPP));
@@ -2305,8 +2756,10 @@ void fw_action_to_cf(int button)
                     gm_p_text[3] = "Show App Info";
                 }
             } 
-            else
+            else{
+                fill_menu_text();
                 gm_p_text[1] = fmt::format("{0:.20}", getLangSTR(LANG_STR::DUMP_1));
+            }
 
 
             // reset game panel to not active so it gets refreshed
@@ -2586,14 +3039,13 @@ back_05905:
         }
     }
 }
-void load_button(const char* file_name, GLuint &tex){
+void load_button(const char* file_name, GLuint &tex, bool is_non_theme_icon = false){
 
     std::string file_path;
-
     if (tex > GL_NULL)
        return;
 
-    if (get->setting_bools[using_theme])
+    if (get->setting_bools[USING_THEME] && !is_non_theme_icon)
         file_path = fmt::format("{0:}/theme/{1:}", APP_PATH(""), file_name);
      else
         file_path = fmt::format("{0:}{1:}", asset_path("buttons/"), file_name);
@@ -2611,7 +3063,11 @@ void draw_additions(view_t vt)
 {
     load_button("btn_x.png", btn_X);
     load_button("btn_o.png", btn_o); 
-    load_button("../heart.png", heart_icon);
+    
+    //DO NOT TRY TO LOAD FROM THEMES
+    load_button("../heart.png", heart_icon, true);
+    load_button("../debug_item_icon.png", debug_icon, true);
+
     load_button("btn_tri.png", btn_tri);
     load_button("btn_options.png", btn_options);
     load_button("btn_down.png", btn_down);
@@ -2622,11 +3078,10 @@ void draw_additions(view_t vt)
     load_button("btn_l1.png", btn_l1);
     load_button("btn_r1.png", btn_r1);
     load_button("btn_l2.png", btn_l2);
-    load_button("../debug_item_icon.png", debug_icon);
     bool is_file_manager = (v_curr == FILE_BROWSER_LEFT || v_curr == FILE_BROWSER_RIGHT);
 
 
-    if (get->setting_bools[Show_Buttons])
+    if (get->setting_bools[SHOW_BUTTONS])
     {
         if (vt == ITEMzFLOW)
         {
@@ -2937,7 +3392,7 @@ void DrawScene_4(void)
         colo += ani_c;
 
     /* background image, or pixelshader */
-    if (bg_tex == GL_NULL && !get->setting_bools[has_image])
+    if (bg_tex == GL_NULL && !get->setting_bools[HAS_IMAGE])
         pixelshader_render(); // use PS_symbols shader
     else
     { /* bg image: fullscreen frect (normalized coordinates) */
@@ -3044,8 +3499,8 @@ void DrawScene_4(void)
 
 #if defined(__ORBIS__)
           int i = 0;
-          if (get->setting_bools[cover_message] &&
-              Confirmation_Msg(getLangSTR(LANG_STR::DOWNLOAD_COVERS)) == YES) {
+          if (get->setting_bools[COVER_MESSAGE] &&
+              custom_Confirmation_Msg(getLangSTR(LANG_STR::DOWNLOAD_COVERS), "Yes", "Dont Ask Again") == YES) {
 
             progstart(getLangSTR(LANG_STR::DOWNLOADING_COVERS).c_str());
             log_info("Downloading covers...");
@@ -3065,13 +3520,16 @@ void DrawScene_4(void)
                 ProgressUpdate(((++i * 100) / all_apps.size()), getLangSTR(LANG_STR::DOWNLOADING_COVERS));
             }
 
-            //  get->setting_bools[cover_message] = false;
+            //  get->setting_bools[COVER_MESSAGE] = false;
             //  SaveOptions(get);
 
             sceMsgDialogTerminate();
             log_info("Downloaded covers");
-          } else
-            log_info("Download covers canceled");
+          } else{
+              log_info("Download covers canceled");
+              get->setting_bools[COVER_MESSAGE] = false;
+              SaveOptions(get);
+        }
 
 #endif
 #if 1
@@ -3244,7 +3702,7 @@ void DrawScene_4(void)
             //
             if (v_curr == ITEM_PAGE)
             {
-                if (get->setting_bools[Show_Buttons])
+                if (get->setting_bools[SHOW_BUTTONS])
                 {
                     //itemzcore_add_text(title_vbo,80., 115., getLangSTR(LANG_STR::BUTTON_X_INFO));
                     itemzcore_add_text(title_vbo,80., 20., getLangSTR(LANG_STR::BUTTON_X_INFO));
@@ -3306,7 +3764,7 @@ void DrawScene_4(void)
                     vec4 red_color = (vec4){ 1.0, 0.0, 0.0, 0.6 };
                     title_vbo.add_text(sub_font, "(Not Found)", red_color, pen);
                 }
-                if (get->setting_bools[Show_Buttons])
+                if (get->setting_bools[SHOW_BUTTONS])
                 {
                     
                     itemzcore_add_text(title_vbo,1475., 61., getLangSTR(LANG_STR::SETTINGS));
@@ -3336,7 +3794,7 @@ void DrawScene_4(void)
                 setting_pen.x += 10.;
                 texture_font_load_glyphs(sub_font, (numb_of_settings == NUMBER_OF_SETTINGS) ? ud_str.c_str() : getLangSTR(LANG_STR::ADVANCED_SETTINGS).c_str());
                 title_vbo.add_text(sub_font, (numb_of_settings == NUMBER_OF_SETTINGS) ? ud_str : getLangSTR(LANG_STR::ADVANCED_SETTINGS), c, setting_pen);
-                if (get->setting_bools[Show_Buttons])
+                if (get->setting_bools[SHOW_BUTTONS])
                 {
                     // itemzcore_add_text(title_vbo,80., 115., getLangSTR(LANG_STR::BUTTON_X_INFO));
                     itemzcore_add_text(title_vbo, 80., 20., getLangSTR(LANG_STR::BUTTON_X_INFO));
@@ -3389,7 +3847,7 @@ void DrawScene_4(void)
         title_vbo = VertexBuffer("vertex:3f,tex_coord:2f,color:4f");
         if(v_curr == ITEMzFLOW){
         itemzcore_add_text(title_vbo, 830, 150, getLangSTR(LANG_STR::NO_APPS_FOUND));
-        if (get->setting_bools[Show_Buttons])
+        if (get->setting_bools[SHOW_BUTTONS])
         {
             itemzcore_add_text(title_vbo, 1475., 61., getLangSTR(LANG_STR::SETTINGS));
             itemzcore_add_text(title_vbo, 1435., 110., getLangSTR(LANG_STR::BUTTON_TRIANGLE));
@@ -3409,7 +3867,7 @@ void DrawScene_4(void)
         {
 
             itemzcore_add_text(title_vbo, (float)(resolution.y / 2.1), (float)(resolution.y - 190.), getLangSTR(LANG_STR::SETTINGS));
-            if (get->setting_bools[Show_Buttons])
+            if (get->setting_bools[SHOW_BUTTONS])
             {
                 itemzcore_add_text(title_vbo, 80., 20., getLangSTR(LANG_STR::BUTTON_X_INFO));
                 itemzcore_add_text(title_vbo, 80., 65., getLangSTR(LANG_STR::BUTTON_O_INFO));

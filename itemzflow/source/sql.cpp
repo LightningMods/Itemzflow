@@ -16,7 +16,7 @@ char *err_msg = 0;
 
 sqlite3 *db = NULL;
 int count = 0;
-//static const char* IF_PS5_db_path = "/data/itemzflow/USB_Apps.db";
+static const char* IF_PS5_db_path = "/data/itemzflow/FG_Apps.db";
 
 // Function to sanitize a string for use in SQL
 std::string sanitizeString(const std::string& str)
@@ -553,20 +553,217 @@ bool Fix_Game_In_DB(item_t &item, bool is_ext_hdd) {
 }
 
 
-int retrieveFVapps(ThreadSafeVector<item_t>& out_vec, Sort_Category category, Favorites &favs) {
-    // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-    // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
-    return 0;
+bool createIFPS5DB() {
+
+    if (if_exists(IF_PS5_db_path)) {
+        if (!SQL_Load_DB(IF_PS5_db_path))
+        {
+            log_info("[EXISTS] Can't open database: %s", sqlite3_errmsg(db));
+            return false;
+        }
+        return true;
+    }
+    mkdir("/data/itemzflow", 0777);
+
+#if 1
+    if (!copyFile(asset_path("vapps.db"), IF_PS5_db_path, false)) {
+        log_error("failed to copy vapps.db");
+		return false;
+    }
+#endif
+
+    return true;
 }
 
-bool Inject_SQL_app(const std::string& tidValue, const std::string& sys_path, const std::string& contentID, const std::string& AppTitle) {
-     // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-     // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
-     return false;
+bool RemoveEntryfromAPPDB(const std::string& tidValue) {
+    char* zErrMsg = 0;
+    uint32_t userId = 0;
+    int ret = -1;
+
+    if ((ret = sceUserServiceGetForegroundUser(&userId)) != ITEMZCORE_SUCCESS)
+    {
+        log_error("[ERROR] sceUserServiceGetForegroundUser ERROR: 0x%X", ret);
+        return false;
+    }
+
+    if (!SQL_Load_DB(APP_DB))
+        return false;
+
+    std::string sql = "DELETE FROM tbl_appbrowse_0"+ std::to_string(userId) +" WHERE titleID = '" + tidValue + "'; ";
+    // Execute SQL statement for insertion
+    if (sqlite3_exec(db, sql.c_str(), 0, 0, &zErrMsg) != SQLITE_OK || zErrMsg) {
+        log_error("SQL error: %s", zErrMsg);
+        sqlite3_free(zErrMsg);
+        sqlite3_close(db), db = NULL;
+        return false;
+    }
+
+    // Create SQL statement for insertion
+    sql = "DELETE FROM tbl_appinfo WHERE titleID = '" + tidValue + "';";
+
+    // Execute SQL statement for insertion
+    if (sqlite3_exec(db, sql.c_str(), 0, 0, &zErrMsg) != SQLITE_OK || zErrMsg) {
+        log_error("SQL error: %s", zErrMsg);
+        sqlite3_free(zErrMsg);
+         sqlite3_close(db), db = NULL;
+        return false;
+    }
+
+    log_debug("Data inserted successfully");
+    sqlite3_close(db), db = NULL;
+    return true;
 }
 
 bool EditDataIFPS5DB(const std::string& tidValue, const std::string& title,const std::string& gmPathValue, bool delete_record) {
-     // EXPERIMENTAL CODE NOT AVAILABLE AT RELEASE
-     // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
-     return true;
+    char* zErrMsg = 0;
+
+    if (!createIFPS5DB()) {
+        log_error("failed to create or open the IF PS5 DB");
+        return false;
+    }
+
+    // Create SQL statement for insertion
+    std::string sql;
+    if(delete_record)
+        sql = "DELETE FROM itemzflow_usb_games WHERE TID = '" + tidValue + "';";
+    else
+        sql = "INSERT OR REPLACE INTO itemzflow_usb_games (TID, Title, GM_PATH) VALUES ('" + tidValue + "', '" + sanitizeString(title) + "', '" + gmPathValue + "');";
+
+    // Execute SQL statement for insertion
+    if (sqlite3_exec(db, sql.c_str(), 0, 0, &zErrMsg) != SQLITE_OK || zErrMsg) {
+        log_error("SQL error: %s", zErrMsg);
+        sqlite3_free(zErrMsg);
+         sqlite3_close(db), db = NULL;
+        return false;
+    }
+    
+    log_debug("Data inserted successfully");
+
+    // Close the database
+     sqlite3_close(db), db = NULL;
+
+    if (delete_record) {
+        return RemoveEntryfromAPPDB(tidValue);
+    }
+
+    return true;
+}
+
+
+int retrieveFVapps(ThreadSafeVector<item_t>& out_vec, Sort_Category category, Favorites &favs) {
+    //char* zErrMsg = 0;
+    int rc = -1;
+    int apps = 0;
+
+    if (!createIFPS5DB()) {
+        log_error("failed to create or open the IF PS5 DB");
+        return 0;
+    }
+
+    // Create SQL statement for retrieval
+    const char* sql = "SELECT TID, Title, GM_PATH FROM itemzflow_usb_games;";
+
+    // Prepare statement
+    sqlite3_stmt* stmt;
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        log_error("SQL error: %s", sqlite3_errmsg(db));
+         sqlite3_close(db), db = NULL;
+        return 0;
+    }
+
+    log_info("========= Itemzflow VAPP List ===============");
+
+    // Execute the statement
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        item_t item{};
+
+        if (category == FILTER_FPKG || category == FILTER_RETAIL_GAMES)
+            continue;
+
+        const char* tid = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        const char* gmPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        item.info.id = tid;
+        item.info.vapp_path = gmPath;
+        item.flags.is_vapp = true;
+        // check to be sure we are not overriding a retail game
+        bool tidExists = false;
+        for (const auto& it : out_vec) {
+            if (it.info.id == tid) {
+                tidExists = true;
+                log_info("TID: %s already exists, skipping", tid);
+                break; // Break the loop if tid is found
+            }
+        }
+
+        if(tidExists)
+		    continue;
+
+        if (category == FILTER_HOMEBREW)
+        {
+            if (item.info.id.find("CUSA") != std::string::npos || item.info.id.rfind("PPSA") != std::string::npos)
+                continue;
+        }
+        else if (category == FILTER_GAMES) // only makes sense for Fake PS5 Games
+        {
+            if (item.info.id.find("CUSA") == std::string::npos && item.info.id.rfind("PPSA") != std::string::npos)
+                continue;
+        }
+
+
+        item.flags.is_favorite = favs.isFavorite(item);
+        if (category == FILTER_FAVORITES && !item.flags.is_favorite) {
+            log_debug("%s is not a favorite", tid);
+            continue;
+        }
+
+        item.info.sfopath = std::string(gmPath) + "/sce_sys/param.sfo";
+        item.info.picpath = fmt::format("/user/appmeta/{}/icon0.png", tid);
+        item.icon.texture = GL_NULL;
+
+        if (!GetVappDetails(item)) { // the app do
+            log_error("Failed to get param.json for %s", tid);
+            item.flags.usbvapp_not_found = true;
+            item.info.version = "?.??";
+            item.info.id = tid;
+            item.info.name = sanitizeString(title);
+        }
+        else { // the app exists
+            item.info.name = sanitizeString(title);
+            log_info("TID: %s, Title %s, path %s", item.info.id.c_str(), item.info.name.c_str(), item.info.vapp_path.c_str());
+            std::string sys_path = "/system_ex/app/" + item.info.id;
+            std::string mounted_json = sys_path + "/sce_sys/param.sfo";
+            
+            if (!if_exists(mounted_json.c_str())) {
+                mkdir(sys_path.c_str(), 0777);
+                
+                if (item.info.vapp_path.rfind("/hostapp") == std::string::npos && !remount(gmPath, sys_path.c_str())) {
+                    // continue;
+                    ani_notify(NOTIFI::ERROR, fmt::format("Unable to mount {}", item.info.id), if_exists(gmPath) ? "Path was Found" : "Game Path is not avail.");
+                }
+            }
+        }
+
+        out_vec.push_back(item);
+        apps++;
+    }
+
+    log_info("============= END OF VAPPS LIST ===============");
+        
+    // Finalize the statement and close the database
+    sqlite3_finalize(stmt);
+    sqlite3_close(db), db = NULL;
+    return apps;
+}
+
+bool Inject_SQL_app(const std::string& tidValue, const std::string& sys_path, const std::string& contentID, const std::string& AppTitle) {
+    item_t newApp;
+    newApp.info.id = tidValue;
+    newApp.info.name =  "*FG* " + AppTitle;
+    newApp.info.version = "1.21";
+    newApp.extra_data.extra_sfo_data.insert(std::pair<std::string, std::string>("CONTENT_ID", contentID));
+    newApp.flags.is_ext_hdd = false;
+
+    return Fix_Game_In_DB(newApp, false);
 }

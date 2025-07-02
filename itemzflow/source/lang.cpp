@@ -107,6 +107,9 @@ std::string Language_GetName(int m_Code)
     case 29:
         s_Name = "Indonesian";
         break;
+    case 30:
+        s_Name = "Ukrainian";
+        break;
     default:
         s_Name = "UNKNOWN";
         break;
@@ -177,7 +180,7 @@ void fill_menu_text()
     ITEMZ_SETTING_TEXT[13] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_2));
     ITEMZ_SETTING_TEXT[14] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_3));
     ITEMZ_SETTING_TEXT[15] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_4));
-    ITEMZ_SETTING_TEXT[16] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_5));
+    ITEMZ_SETTING_TEXT[16] = fmt::format("{0:.30}", getLangSTR(LANG_STR::CLOSE_WITH_DAEMON));
     ITEMZ_SETTING_TEXT[17] = fmt::format("{0:.30}", getLangSTR(LANG_STR::EXTRA_SETTING_6));
 
     gm_p_text[0] = fmt::format("{0:.20}", getLangSTR(LANG_STR::LAUNCH_GAME));

@@ -21,7 +21,7 @@ sqlite3 *db;
 #define TEST_USER_AGENT	"Daemon/PS4"
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 02
+#define VERSION_MINOR 03
 
 const unsigned char completeVersion[] = {
   VERSION_MAJOR_INIT,

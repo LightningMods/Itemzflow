@@ -212,14 +212,14 @@ int main(int argc, char *argv[]) {
   // log_info(" Starting Resource Monitor Thread...");
   // scePthreadCreate(&up_thread, NULL, resource_monitor_thread, NULL,
   // "Resource_Monitor_Thread");
-  if(!if_exists("/dev/mira")){
+ // if(!if_exists("/dev/mira")){
 
      log_info(" Starting FTP & Infinix...");
      if (!StartFTP())
          log_error(" Failed to Start FTP & Infinix");
      else
          log_info(" FTP Started Successfully");
-   }
+ //  }
   //
   log_info(" Starting main PS Button loop...");
   PS_Button_loop();

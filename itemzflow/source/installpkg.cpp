@@ -5,6 +5,7 @@
 #include <installpkg.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string>
 
 
@@ -186,16 +187,21 @@ bool pkg_is_patch(const char *src_dest) {
     return false;
   }
 
-  unsigned int flags = BE32(hdr.content_flags);
-
-  if (flags & PKG_CONTENT_FLAGS_FIRST_PATCH ||
-      flags & PKG_CONTENT_FLAGS_SUBSEQUENT_PATCH ||
-      flags & PKG_CONTENT_FLAGS_DELTA_PATCH ||
-      flags & PKG_CONTENT_FLAGS_CUMULATIVE_PATCH) {
-    return true;
+  if (!extract_sfo_from_pkg(src_dest, "/user/app/ITEM00001/tmp_param.sfo")) {
+    log_error("Could not extract param.sfo");
+    return false;
+  }
+  // TODO make more effecient
+  std::vector<uint8_t> sfo_data = readFile("/user/app/ITEM00001/tmp_param.sfo");
+  if (sfo_data.empty()) {
+    log_error("Could not read param.sfo");
+    return false;
   }
 
-  return false;
+  unlink("/user/app/ITEM00001/tmp_param.sfo");
+
+  SfoReader sfo(sfo_data);
+  return (sfo.GetValueFor<std::string>("CATEGORY") == "gp");
 }
 
 void *install_prog(void *argument) {
@@ -287,7 +293,7 @@ void *install_prog(void *argument) {
 }
 
 uint32_t pkginstall(const char *fullpath, const char *filename,
-                    bool Show_install_prog, bool delete_pkg_after, int max_pkgs,
+                    bool show_install_prog, bool delete_pkg_after, int max_pkgs,
                     int curr_pkg) {
   char title_id[16];
   int is_app, ret = -1;
@@ -325,7 +331,7 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
     download_params.param.content_name = tmp.c_str();
     download_params.param.icon_path = "/update/fakepic.png";
     download_params.param.playgo_scenario_id = "0";
-    if (Show_install_prog)
+    if (show_install_prog)
       download_params.param.option = BGFT_TASK_OPTION_INVISIBLE;
     else
       download_params.param.option = BGFT_TASK_OPTION_DISABLE_CDN_QUERY_PARAM;
@@ -362,7 +368,7 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
   } else // bgft_download_get_task_progress
     return PKG_ERROR("no file at", ret);
 
-  if (!Show_install_prog) {
+  if (!show_install_prog) {
       log_info("Install progress is disabled, sent to the PS4...");
       return 0;
   }
@@ -374,7 +380,7 @@ uint32_t pkginstall(const char *fullpath, const char *filename,
   // args->size = size;
   args->path = strdup(fullpath);
   args->fname = strdup(filename);
-  args->is_thread = !Show_install_prog;
+  args->is_thread = !show_install_prog;
   args->delete_pkg = delete_pkg_after;
   args->max_pkgs = max_pkgs;
   args->curr_pkg = curr_pkg;

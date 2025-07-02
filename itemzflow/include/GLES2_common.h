@@ -43,6 +43,7 @@ struct AppIcon {
   struct ImageData {
     std::unique_ptr<unsigned char, STBIImageDeleter> data = nullptr;
     int w = 0, h = 0, comp = 0;
+    bool tried_once = false;
 
     ImageData() = default;
 
@@ -69,10 +70,16 @@ struct AppIcon {
     ~ImageData() = default;
 
     void load(const char *filepath, std::atomic<bool> &is_loaded) {
+
+     if(tried_once){
+      //   log_debug("Already tried to load %s", filepath);
+         return;
+     }
      // data = load_png_asset(filepath, is_loaded, *this);
       unsigned char *image =  stbi_load(filepath, &w, &h, &comp, STBI_rgb_alpha);
       if (image == nullptr) {
         log_debug("%s(%s) FAILED!", __FUNCTION__, filepath);
+        tried_once = true;
         return;
       }
       is_loaded = true;
@@ -395,7 +402,7 @@ typedef enum
     RESET_THEME_OPTION = 13,
     SHOW_BUTTON_OPTION = 14,
     CHANGE_BACKGROUND_OPTION = 15,
-    COVER_MESSAGE_OPTION  = 16,
+    KILL_ON_CLOSE  = 16,
     FONT_OPTION = 11,
     NUMB_OF_EXTRAS = 17,
 

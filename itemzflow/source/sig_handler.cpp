@@ -23,6 +23,22 @@
 #include <sys/types.h>
 #include <utils.h>
 
+#define SAMPLER_MSG "Option: Sandbox Copy\n\n"\
+"What is Sandbox Copy?\n\n"\
+"Sandbox Copy is a feature that copies games directly from the sandbox folder instead of "\
+"copying from the PFS (PlayStation File System) Image. This alternative method can help "\
+"dump games that may have missing or incomplete files.\n\n"\
+"Why is it important?\n\n"\
+"Some games may not have all content installed (such as additional language packs, updates, "\
+"or DLC), which can cause issues when copying from the PFS Image. Copying from the Sandbox bypasses these potential "\
+"problems by working directly with the files that are actually present in the sandbox.\n\n"\
+"Do I need Sandbox Copy enabled?\n\n"\
+"For most complete game installations with all content and updates, Sandbox Copy isn't necessary. "\
+"However, it's particularly useful for games that are missing additional language files, "\
+"incomplete installations, or when you want to dump only the base game files that are "\
+"currently available in the sandbox.\n\n"\
+"When unsure, enabling Sandbox Copy is a safer choice to avoid parsing errors with incomplete game data."
+
 extern bool is_remote_va_launched;
 static size_t WriteCallback(void *contents, size_t size, size_t nmemb,
                             void *userp) {
@@ -49,7 +65,7 @@ std::string generate_random_log_filename(bool is_crash = false) {
   char buffer[32];
   std::strftime(buffer, sizeof(buffer), "%Y%m%d_%H%M%S", &tm);
   std::stringstream ss;
-  std::string str = is_crash ?  "_Crash" : "_User_Upload";
+  std::string str = is_crash ? "_Crash" : "_User_Upload";
   ss << dateFolder << "/Itemzflow_" << buffer << str << "_" << rand() % 10000
      << ".zip";
 
@@ -96,20 +112,20 @@ void upload_crash_log(bool is_crash) {
   std::string logContent = readZip(zip_path);
   std::string encodedContent = Base64::Encode(logContent);
   std::string path = generate_random_log_filename(is_crash);
-  std::string commitMessage = is_crash ?   "Itemzflow has crashed on " + generate_timestamp() : "User uploaded logs on " + generate_timestamp();
-  std::string apiUrl = "https://api.github.com/repos/ps4-logger/itemzflow-logs/contents/" + path;
+  std::string commitMessage = is_crash
+                                  ? "Itemzflow (" + completeVersion + ") " +
+                                        "has crashed on " + generate_timestamp()
+                                  : "User uploaded (" + completeVersion + ") " +
+                                        "logs on" + generate_timestamp();
+  std::string apiUrl =
+      "https://api.github.com/repos/ps4-logger/itemzflow-logs/contents/" + path;
 
   curl = curl_easy_init();
   if (curl) {
     // tmp);
     tk = XORencryptDecrypt(
-        "\x04\x0e\x40\x58\x1f\x2f\x07\x33\x04\x06\x6e\x66\x76\x04\x03\x3f\x63"
-        "\x1a\x11\x7b\x51\x2c\x07\x02\x0b\x0a\x3e\x67\x05\x5c\x20\x31\x48\x30"
-        "\x15\x2e\x29\x65\x41\x5b\x55\x19\x23\x46\x54\x0d\x71\x5b\x22\x2b\x0a"
-        "\x7b\x21\x26\x50\x38\x16\x0a\x07\x53\x65\x33\x0f\x66\x3b\x05\x7d\x02"
-        "\x09\x2e\x2a\x32\x18\x7e\x4b\x19\x03\x2b\x25\x24\x1d\x60\x3b\x22\x6e"
-        "\x67\x38\x6a\x30\x1f\x7c\x45\x04\x4d\x3d\x2d",
-        94);
+        "\x04\x0e\x40\x58\x1f\x2f\x07\x33\x04\x06\x6e\x66\x76\x04\x03\x3f\x63\x1a\x11\x7b\x51\x47\x47\x0d\x2f\x38\x02\x19\x23\x58\x0b\x47\x13\x30\x32\x30\x34\x3e\x06\x16\x7f\x60\x02\x7e\x2f\x52\x44\x42\x25\x01\x10\x00\x08\x04\x00\x39\x09\x2d\x4e\x0e\x20\x22\x23\x5d\x27\x21\x7c\x5a\x2d\x20\x33\x3c\x30\x55\x18\x3c\x0a\x5a\x25\x29\x03\x60\x36\x23\x7f\x14\x39\x57\x0f\x12\x60\x54\x39",
+        93);
     std::string json = "{\"message\": \"" + commitMessage +
                        "\", \"content\": \"" + encodedContent + "\"}";
     curl_easy_setopt(curl, CURLOPT_URL, apiUrl.c_str());
@@ -124,6 +140,7 @@ void upload_crash_log(bool is_crash) {
     headers = curl_slist_append(headers, "Accept: application/vnd.github+json");
     Base64::Decode("QXV0aG9yaXphdGlvbjogdG9rZW4=", tmp);
     tmp = tmp + " " + tk;
+   // log_info("tmp: %s", tmp.c_str());
     headers = curl_slist_append(headers, tmp.c_str());
 
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -131,11 +148,12 @@ void upload_crash_log(bool is_crash) {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
     res = curl_easy_perform(curl);
-    if (res != CURLE_OK){
-      msgok(MSG_DIALOG::NORMAL, fmt::format("Failed to Upload logs\n\n{}",  getLangSTR(LANG_STR::PATCH_CON_FAILED)));
+    if (res != CURLE_OK) {
+      msgok(MSG_DIALOG::NORMAL,
+            fmt::format("Failed to Upload logs\n\n{}",
+                        getLangSTR(LANG_STR::PATCH_CON_FAILED)));
       log_debug("curl_easy_perform() failed: %s", curl_easy_strerror(res));
-    }
-    else{
+    } else {
       msgok(MSG_DIALOG::NORMAL, "Logs uploaded successfully");
       log_debug("Log uploaded to the Server");
     }
@@ -216,11 +234,20 @@ bool Dump_w_opts(std::string tid, std::string d_p, std::string gtitle,
   options.dump_path = d_p.c_str();
   options.title = gtitle.c_str();
   options.opt = (Dump_Options)dump;
+  options.sb_copy = false;
+
+
+  if(Confirmation_Msg(SAMPLER_MSG) == YES){
+       options.sb_copy = true;
+  }
+
+  progstart((char *)getLangSTR(LANG_STR::STARTING_DUMPER).c_str());
 
   std::string tmp =
       fmt::format("/mnt/sandbox/pfsmnt/{}-app0-nest/pfs_image.dat", tid);
   if (!if_exists(tmp.c_str())) {
     log_error("Dump_w_opts: %s doesnt exist", tmp.c_str());
+    msgok(MSG_DIALOG::WARNING, "Game  was not launched successfully, do you own this game?\nNote: games with a pad lock icon are NOT able to be dumped (I.e games without a license)");
     return false;
   }
 
@@ -281,7 +308,6 @@ int (*rejail_multi)(void) = NULL;
 
 void Exit_Success(const char *text) {
   log_info("%s", text);
-  log_info("Disable Home Menu Redirect Called for Exit....");
 
   if (rejail_multi) {
     log_debug("Rejailing App >>>");
@@ -291,6 +317,10 @@ void Exit_Success(const char *text) {
 
   if (reboot_app)
     sceSystemServiceLoadExec("/app0/ItemzCore.self", 0);
+
+  if(get->setting_bools[STOP_DAEMON_ON_CLOSE]){
+    ItemzLocalKillApp(get->ItemzDaemon_AppId);
+  }
 
   log_debug("Calling SystemService Exit");
   sceSystemServiceLoadExec("exit", 0);
@@ -363,7 +393,7 @@ bool is_dumper_running = false;
 void SIG_Handler(int sig_numb) {
   std::string profpath;
   IPC_Client &ipc = IPC_Client::getInstance();
- // rejail_multi =
+  // rejail_multi =
   //    (int (*)(void))prx_func_loader("/app0/Media/jb.prx", "rejail_multi");
   int fw = (ps4_fw_version() >> 16);
   // void* bt_array[255];
@@ -504,31 +534,44 @@ App_Resumed:
   is_dumper_running = true;
   std::string tmp;
   std::string tmp2;
+
   progstart((char *)getLangSTR(LANG_STR::STARTING_DUMPER).c_str());
 
-  fmt::print("title_id.get(): {},  DUMPER_PATH: {}", title_id.get(), get->setting_strings[DUMPER_PATH]);
+  fmt::print("title_id.get(): {},  DUMPER_PATH: {}", title_id.get(),
+             get->setting_strings[DUMPER_PATH]);
   tmp = fmt::format("{}/{}", get->setting_strings[DUMPER_PATH], title_id.get());
 
-  if ((dump == SEL_BASE_GAME || dump == SEL_DUMP_ALL) && if_exists(tmp.c_str())) {
+  if ((dump == SEL_BASE_GAME || dump == SEL_DUMP_ALL) &&
+      if_exists(tmp.c_str())) {
     ProgSetMessagewText(5, getLangSTR(LANG_STR::DELETING_GAME_FOLDER).c_str());
     rmtree(tmp.c_str());
-    tmp = fmt::format("{}/{}.complete", get->setting_strings[DUMPER_PATH],  title_id.get());
+    tmp = fmt::format("{}/{}.complete", get->setting_strings[DUMPER_PATH],
+                      title_id.get());
     unlink(tmp.c_str());
   }
 
-  tmp = fmt::format("{}/{}-patch/", get->setting_strings[DUMPER_PATH],   title_id.get());
-  if ((dump == SEL_GAME_PATCH || dump == SEL_DUMP_ALL) && if_exists(tmp.c_str())) {
+  tmp = fmt::format("{}/{}-patch/", get->setting_strings[DUMPER_PATH],
+                    title_id.get());
+  if ((dump == SEL_GAME_PATCH || dump == SEL_DUMP_ALL) &&
+      if_exists(tmp.c_str())) {
     ProgSetMessagewText(5, getLangSTR(LANG_STR::DELETING_GAME_FOLDER).c_str());
     rmtree(tmp.c_str());
   }
 
   Timer timer;
   // dump_game has all the dialoge for copied proc
-  if (Dump_w_opts(title_id.get(), get->setting_strings[DUMPER_PATH],  g_idx > all_apps.size() ? "WTF" : all_apps[g_idx].info.name,  dump)) {
+  if (Dump_w_opts(title_id.get(), get->setting_strings[DUMPER_PATH],
+                  g_idx > all_apps.size() ? "WTF" : all_apps[g_idx].info.name,
+                  dump)) {
     msgok(MSG_DIALOG::NORMAL,
-          fmt::format("{0:} {1:} {2:}\nTime elapsed: {3:2.0f}.{4:2.0f} minutes", getLangSTR(LANG_STR::DUMP_OF), title_id.get(),  getLangSTR(LANG_STR::COMPLETE_WO_ERRORS),  timer.GetTotalMinutes(), timer.GetFractionalMinutes()));
+          fmt::format("{0:} {1:} {2:}\nTime elapsed: {3:2.0f}.{4:2.0f} minutes",
+                      getLangSTR(LANG_STR::DUMP_OF), title_id.get(),
+                      getLangSTR(LANG_STR::COMPLETE_WO_ERRORS),
+                      timer.GetTotalMinutes(), timer.GetFractionalMinutes()));
   } else {
-    msgok(MSG_DIALOG::WARNING, fmt::format("{0:} {1:} {2:}", getLangSTR(LANG_STR::DUMP_OF), title_id.get(), getLangSTR(LANG_STR::DUMP_FAILED)));
+    msgok(MSG_DIALOG::WARNING,
+          fmt::format("{0:} {1:} {2:}", getLangSTR(LANG_STR::DUMP_OF),
+                      title_id.get(), getLangSTR(LANG_STR::DUMP_FAILED)));
   }
 
   print_memory();

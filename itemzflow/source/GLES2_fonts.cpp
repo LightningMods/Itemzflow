@@ -154,7 +154,9 @@ bool GLES2_fonts_from_ttf(const char *path)
     {   /* load .ttf in memory */
         ttf  = orbisFileGetFileContent(path);
         size = _orbisFile_lastopenFile_size;
-        if(!ttf)  goto default_embedded;
+        if(!ttf)  {
+            goto default_embedded;
+        }
     } else {
 
 default_embedded: // fallback on error
@@ -168,8 +170,6 @@ default_embedded: // fallback on error
     // prepare our set of different size
     if( ! ftgl_init_fonts( ttf, size ) )
     {   // custom data failed...
-        ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::TTF_ERROR_NOTIFY), getLangSTR(LANG_STR::TTF_ERROR_NOTIFY2));
-
 #if defined (__ORBIS__)
         sceKernelIccSetBuzzer(3);
 #endif

@@ -56,12 +56,11 @@ extern ItemzSettings set,
 bool is_connected_app = false;
 
 std::string completeVersion;
-
-void generate_build_time(){
-
-    completeVersion = VERSION_MAJOR_INIT;
+//
+void generate_build_time() {
+    completeVersion = TOSTRING(VERSION_MAJOR);
     completeVersion += ".";
-    completeVersion += VERSION_MINOR_INIT;
+    completeVersion += TOSTRING(VERSION_MINOR);
     completeVersion += "-V-";
     completeVersion += BUILD_YEAR_CH0;
     completeVersion += BUILD_YEAR_CH1;
@@ -85,7 +84,6 @@ void generate_build_time(){
 
     fmt::print("ItemzCore version: {}", completeVersion);
 }
-
 
 /*
     GLES2 scene
@@ -247,7 +245,9 @@ void init_ItemzCore(int w, int h)
     // init shaders for lines and rects
     ORBIS_RenderFillRects_init(w, h);
     // init ttf fonts
-    GLES2_fonts_from_ttf(get->setting_strings[FNT_PATH].c_str());
+    if(!GLES2_fonts_from_ttf(get->setting_strings[FNT_PATH].c_str()))
+       log_info("Failed to load TTF");
+      // ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::TTF_ERROR_NOTIFY), getLangSTR(LANG_STR::TTF_ERROR_NOTIFY2));
     // init ani_notify(NOTIFI::)
     GLES2_ani_init(w, h);
     // fragments shaders, effects etc
@@ -329,7 +329,7 @@ bool init_daemon_services(bool redirect) {
 
     if (is_connected_app) {  // You should declare and define 'is_connected_app' somewhere
         log_debug("Daemon is connected");
-        if (redirect) {  // is setting get->HomeMenu_Redirection enabled
+        if (redirect) {  // is setting get->HOMEMENU_REDIRECTION enabled
             log_info("Redirect on with app connected");
 
             error = ipc.IPCSendCommand(IPC_Commands::ENABLE_HOME_REDIRECT, IPC_BUFFER);
@@ -523,7 +523,7 @@ int Start_IF_internal_Services(const char* launch_q)
 
     if(init_curl()){
         log_info("CURL INIT Successfull");
-        launch_update_thread();
+       // launch_update_thread();
         log_info("Update Thread Launched");
     }
     else{
@@ -552,10 +552,10 @@ int Start_IF_internal_Services(const char* launch_q)
         else
             log_info("No Open Games detected");
 
-        if (get->setting_bools[Daemon_on_start])
+        if (get->setting_bools[DAEMON_ON_START])
         {
             log_info("Starting Daemon... ");
-            if (!init_daemon_services(get->setting_bools[HomeMenu_Redirection]))
+            if (!init_daemon_services(get->setting_bools[HOMEMENU_REDIRECTION]))
                 ani_notify(NOTIFI::WARNING, getLangSTR(LANG_STR::FAILED_DAEMON), getLangSTR(LANG_STR::DAEMON_OFF2));
             else
                 log_debug(" The Itemzflow init_daemon_services succeeded.");

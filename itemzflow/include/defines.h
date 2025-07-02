@@ -32,7 +32,7 @@
 #define FM_ENTRIES (10) // max num we split bound_box Height, in px
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 06
+#define VERSION_MINOR 07
 
 
 #if defined (__ORBIS__)
@@ -157,13 +157,15 @@
 #define TRUE 1
 #define FALSE 0
 
+// Simplified version number to string conversion
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
 
-
+// Build date/time macros (keep your existing ones)
 #define BUILD_YEAR_CH0 (__DATE__[ 7])
 #define BUILD_YEAR_CH1 (__DATE__[ 8])
 #define BUILD_YEAR_CH2 (__DATE__[ 9])
 #define BUILD_YEAR_CH3 (__DATE__[10])
-
 
 #define BUILD_MONTH_IS_JAN (__DATE__[0] == 'J' && __DATE__[1] == 'a' && __DATE__[2] == 'n')
 #define BUILD_MONTH_IS_FEB (__DATE__[0] == 'F')
@@ -177,7 +179,6 @@
 #define BUILD_MONTH_IS_OCT (__DATE__[0] == 'O')
 #define BUILD_MONTH_IS_NOV (__DATE__[0] == 'N')
 #define BUILD_MONTH_IS_DEC (__DATE__[0] == 'D')
-
 
 #define BUILD_MONTH_CH0 \
     ((BUILD_MONTH_IS_OCT || BUILD_MONTH_IS_NOV || BUILD_MONTH_IS_DEC) ? '1' : '0')
@@ -202,59 +203,12 @@
 #define BUILD_DAY_CH0 ((__DATE__[4] >= '0') ? (__DATE__[4]) : '0')
 #define BUILD_DAY_CH1 (__DATE__[ 5])
 
-
-
-// Example of __TIME__ string: "21:06:19"
-//                              01234567
-
 #define BUILD_HOUR_CH0 (__TIME__[0])
 #define BUILD_HOUR_CH1 (__TIME__[1])
-
 #define BUILD_MIN_CH0 (__TIME__[3])
 #define BUILD_MIN_CH1 (__TIME__[4])
-
 #define BUILD_SEC_CH0 (__TIME__[6])
 #define BUILD_SEC_CH1 (__TIME__[7])
-
-
-#if VERSION_MAJOR > 100
-
-#define VERSION_MAJOR_INIT \
-    ((VERSION_MAJOR / 100) + '0'), \
-    (((VERSION_MAJOR % 100) / 10) + '0'), \
-    ((VERSION_MAJOR % 10) + '0')
-
-#elif VERSION_MAJOR > 10
-
-#define VERSION_MAJOR_INIT \
-    ((VERSION_MAJOR / 10) + '0'), \
-    ((VERSION_MAJOR % 10) + '0')
-
-#else
-
-#define VERSION_MAJOR_INIT \
-    (VERSION_MAJOR + '0')
-
-#endif
-
-#if VERSION_MINOR > 100
-
-#define VERSION_MINOR_INIT \
-    ((VERSION_MINOR / 100) + '0'), \
-    (((VERSION_MINOR % 100) / 10) + '0'), \
-    ((VERSION_MINOR % 10) + '0')
-
-#elif VERSION_MINOR > 10
-
-#define VERSION_MINOR_INIT \
-    ((VERSION_MINOR / 10) + '0'), \
-    ((VERSION_MINOR % 10) + '0')
-
-#else
-
-#define VERSION_MINOR_INIT \
-    (VERSION_MINOR + '0')
-#endif
 // reuse this type to index texts around!
 /// for icons.c, sprite.c
 #define NUM_OF_TEXTURES  (8)

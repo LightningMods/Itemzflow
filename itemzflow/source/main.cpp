@@ -328,8 +328,10 @@ void updateController()
         if(orbisPadGetButtonPressed(ORBISPAD_L1))
         {
             log_info( "L1 pressed");
+#if 0
             if(v_curr != FILE_BROWSER_LEFT && v_curr != FILE_BROWSER_RIGHT)
                trigger_dump_frame();
+#endif
 
             fw_action_to_cf(L1);
             reset_idle_timer = true;
@@ -350,7 +352,7 @@ void updateController()
         {
             reset_idle_timer = true;
             log_info("R2 pressed");
-            // crash();
+          //  crash();
             /// throw std::runtime_error("Crash");
         }
         if (orbisPadGetButtonPressed(ORBISPAD_OPTIONS))

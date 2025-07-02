@@ -256,20 +256,17 @@ typedef struct save_entry
 
 enum bool_settings
 {
-    HomeMenu_Redirection, 
-    Daemon_on_start, 
-    Show_install_prog, 
-    Start_FTP, 
-    FTP_on_Start, 
-    Cover_message, 
-    Show_Buttons, 
-    un_apt,
-    using_theme, 
-    using_sb, 
-    has_image,
-    cover_message,
+    HOMEMENU_REDIRECTION, 
+    DAEMON_ON_START, 
+    SHOW_INSTALL_PROG, 
+    COVER_MESSAGE, 
+    SHOW_BUTTONS, 
+    USING_THEME, 
+    USING_SB, 
+    HAS_IMAGE,
     INTERNAL_UPDATE,
     BACKGROUND_INSTALL,
+    STOP_DAEMON_ON_CLOSE,
     NUMB_OF_BOOLS
 
 };
@@ -315,7 +312,7 @@ void get_memory_usage();
 // the Settings
 extern ItemzSettings set,
 * get;
-extern save_entry_t gm_save;
+
 extern bool current_app_is_fpkg;
 bool LoadOptions(ItemzSettings *set);
 bool SaveOptions(ItemzSettings *set);
@@ -408,7 +405,7 @@ typedef enum
     FS_CANCELLED,
 
 } FILE_STATE;
-
+void fill_menu_text();
 typedef enum
 {
     FS_NONE = 0,
@@ -536,6 +533,7 @@ bool app_inst_util_uninstall_game(const char *title_id, int *error);
 bool touch_file(const char* destfile);
 void dump_frame();
 void trigger_dump_frame();
+int sys_unmount(const char *syspath, int flags);
 
 extern bool reboot_app;
 bool IS_ERROR(uint32_t ret);
@@ -552,6 +550,7 @@ enum update_ret{
     IF_NO_UPDATE,
 };
 update_ret check_update_from_url(const char* tid);
+bool IsVappmounted(std::string syspath);
 void launch_update_thread();
 bool shellui_for_lockdown(bool unpatch);
 void mkdirs(const char* dir);

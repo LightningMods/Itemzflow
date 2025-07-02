@@ -29,7 +29,7 @@ extern bool skipped_first_X;
     extern ItemzSettings set,
     *get;
 
-save_entry_t gm_save;
+
 vec3 p_off = (0);
 vec2 p1_pos;
 GameStatus old_status;
@@ -992,7 +992,7 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
     BACKGROUND_MP3_OPTION,
     SAVE_ITEMZFLOW_SETTINGS
     */
-    //snprintf(&tmp[0], 63, format, get->HomeMenu_Redirection ? getLangSTR(LANG_STR::ON2) : getLangSTR(LANG_STR::OFF2)); break;
+    //snprintf(&tmp[0], 63, format, get->HOMEMENU_REDIRECTION ? getLangSTR(LANG_STR::ON2) : getLangSTR(LANG_STR::OFF2)); break;
         switch (idx)
         {
         case OPEN_SHELLUI_MENU:
@@ -1020,7 +1020,9 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
                 case POWER_CONTROL_OPTION:
                     tmp = fmt::format("< {0:.35} >", power_menu_get_str((Power_control_sel)li.multi_sel.pos.y));
                     break;
-                case SORT_BY_OPTION: tmp =  fmt::format("< {0:.35} >",Sort_get_str((Sort_Multi_Sel)li.multi_sel.pos.y));  break;
+                case SORT_BY_OPTION: 
+                    tmp =  fmt::format("< {0:.35} >",Sort_get_str((Sort_Multi_Sel)li.multi_sel.pos.y)); 
+                    break;
                 case OPEN_SHELLUI_MENU:
                     tmp = fmt::format("< {0:.35} >", orbis_menu_get_str((ShellUI_Multi_Sel)li.multi_sel.pos.y));
                     break;
@@ -1071,8 +1073,8 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
         case DUMPER_PATH_OPTION:
             tmp = fmt::format("{0:.34}{1:}", get->setting_strings[DUMPER_PATH], (get->setting_strings[DUMPER_PATH].size() > 34) ? "..." : "");
             break;
-        case COVER_MESSAGE_OPTION:
-            get->setting_bools[cover_message] ? tmp = "ON" : tmp = "OFF";
+        case KILL_ON_CLOSE:
+            get->setting_bools[STOP_DAEMON_ON_CLOSE] ? tmp = "ON" : tmp = "OFF";
             break;
         case FUSE_IP_OPTION:
            // use_reflection ? tmp = "ON" : tmp = "OFF";
@@ -1088,12 +1090,12 @@ static void layout_compose_text(view_t vw, int idx, vec2 &pen, bool save_text)
         case IF_PKG_INSTALLER_OPTION:
             tmp = getLangSTR(LANG_STR::SELECT_INTERACT);
             break;
-        case HOME_MENU_OPTION: tmp = (get->setting_bools[HomeMenu_Redirection] ? getLangSTR(LANG_STR::ON2) : getLangSTR(LANG_STR::OFF2)); break;
+        case HOME_MENU_OPTION: tmp = (get->setting_bools[HOMEMENU_REDIRECTION] ? getLangSTR(LANG_STR::ON2) : getLangSTR(LANG_STR::OFF2)); break;
         case FONT_OPTION:
             if(numb_of_settings > NUMBER_OF_SETTINGS)
                tmp = fmt::format("{0:.34}{1:}", get->setting_strings[FNT_PATH], (get->setting_strings[FNT_PATH].size() > 34) ? "..." : "");
             break;
-        case SHOW_BUTTON_OPTION: tmp = (get->setting_bools[Show_Buttons] ? getLangSTR(LANG_STR::ON2) : getLangSTR(LANG_STR::OFF2));
+        case SHOW_BUTTON_OPTION: tmp = (get->setting_bools[SHOW_BUTTONS] ? getLangSTR(LANG_STR::ON2) : getLangSTR(LANG_STR::OFF2));
             break;
         case BACKGROUND_MP3_OPTION: tmp = fmt::format("{0:.34}{1:}", get->setting_strings[MP3_PATH], (get->setting_strings[MP3_PATH].size() > 34) ? "..." : ""); break;
         default: break;
@@ -1907,7 +1909,7 @@ void GLES2_render_list(view_t v)
 
         if (!fm_lp.is_active || !fm_rp.is_active) // dynalloc and init this panel
         {
-            if(get->setting_bools[Show_Buttons])
+            if(get->setting_bools[SHOW_BUTTONS])
                 fm_rp.bound_box = fm_lp.bound_box = (vec4){50, resolution.y - 50, size.x, size.y - 150};
             else
                 fm_rp.bound_box = fm_lp.bound_box = (vec4){50, resolution.y - 50, size.x, size.y};
@@ -2055,17 +2057,17 @@ void pixelshader_init(int width, int height)
     //vertex_buffer_push_back(rects_buffer, vtx, 4, idx, 6);
     rects_buffer.push_back(vtx, 4, idx, 6);
 
-/* compile, link and use shader set->using_sb */
+/* compile, link and use shader set->USING_SB */
 
 if(mz_shader == GL_NULL)
    mz_shader = CreateProgramFE(0);
 
-if ((shader == GL_NULL && !get->setting_bools[has_image] && get->setting_bools[using_sb] && if_exists(get->setting_strings[SB_PATH].c_str())))
+if ((shader == GL_NULL && !get->setting_bools[HAS_IMAGE] && get->setting_bools[USING_SB] && if_exists(get->setting_strings[SB_PATH].c_str())))
 {
     fmt::print("[THEME] Loading Shader from {}....", get->setting_strings[SB_PATH]);
     shader = CreateProgramFE(5, get->setting_strings[SB_PATH]);
 }
-else if ((!get->setting_bools[has_image] && !get->setting_bools[using_sb] && shader == GL_NULL) || (shader == GL_NULL && !get->setting_bools[using_theme]))
+else if ((!get->setting_bools[HAS_IMAGE] && !get->setting_bools[USING_SB] && shader == GL_NULL) || (shader == GL_NULL && !get->setting_bools[USING_THEME]))
 {
     shader = CreateProgramFE(4); // test emb2
 }

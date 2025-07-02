@@ -128,7 +128,7 @@ void GLES2_Draw_sysinfo(bool is_idle)
     std::string tmp;
     if(is_idle){
         /* background image, or pixelshader */
-       if (bg_tex == GL_NULL && !get->setting_bools[has_image])
+       if (bg_tex == GL_NULL && !get->setting_bools[HAS_IMAGE])
            pixelshader_render(); // use PS_symbols shader
        else{ /* bg image */
          vec4 r = (vec4){-1., -1., 1., 1.};

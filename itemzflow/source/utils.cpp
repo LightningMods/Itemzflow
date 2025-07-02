@@ -667,7 +667,7 @@ static int print_ini_info(void *user, const char *section, const char *name,
   // log_info("Settings: %s = %s", name, value);
 
   if (MATCH("Settings", "Daemon_on_start")) {
-    set->setting_bools[Daemon_on_start] = atoi(value);
+    set->setting_bools[DAEMON_ON_START] = atoi(value);
   } else if (MATCH("Settings", "TTF_Font")) {
     set->setting_strings[FNT_PATH] = value;
     if (set->setting_strings[FNT_PATH].find("SCE-PS3-RD-R-LATIN.TTF") ==
@@ -676,9 +676,9 @@ static int print_ini_info(void *user, const char *section, const char *name,
       Fnt_setting_enabled = true;
     }
   } else if (MATCH("Settings", "HomeMenu_Redirection")) {
-    set->setting_bools[HomeMenu_Redirection] = atoi(value);
+    set->setting_bools[HOMEMENU_REDIRECTION] = atoi(value);
   } else if (MATCH("Settings", "Show_install_prog")) {
-    set->setting_bools[Show_install_prog] = atoi(value);
+    set->setting_bools[SHOW_INSTALL_PROG] = atoi(value);
   } else if (MATCH("Settings", "Dumper_option")) {
     set->Dump_opt = (Dump_Multi_Sels)atoi(value);
   } else if (MATCH("Settings", "Sort_By")) {
@@ -686,16 +686,16 @@ static int print_ini_info(void *user, const char *section, const char *name,
   } else if (MATCH("Settings", "Sort_Cat")) {
     set->sort_cat = (Sort_Category)atoi(value);
   } else if (MATCH("Settings", "cover_message")) {
-    set->setting_bools[cover_message] = atoi(value);
+    set->setting_bools[COVER_MESSAGE] = atoi(value);
   } else if (MATCH("Settings", "Dumper_Path")) {
     set->setting_strings[DUMPER_PATH] = value;
   } else if (MATCH("Settings", "MP3_Path")) {
     set->setting_strings[MP3_PATH] = value;
   } else if (MATCH("Settings", "Show_Buttons")) {
-    set->setting_bools[Show_Buttons] = atoi(value);
+    set->setting_bools[SHOW_BUTTONS] = atoi(value);
   } else if (MATCH("Settings", "Enable_Theme")) {
-    set->setting_bools[using_theme] = atoi(value);
-    log_debug("Enable_Theme: %d : %d", set->setting_bools[using_theme],
+    set->setting_bools[USING_THEME] = atoi(value);
+    log_debug("Enable_Theme: %d : %d", set->setting_bools[USING_THEME],
               atoi(value));
   } else if (MATCH("Settings", "Image_path")) {
     set->setting_strings[IMAGE_PATH] = value; // nReflections
@@ -708,6 +708,9 @@ static int print_ini_info(void *user, const char *section, const char *name,
   }
   else if (MATCH("Settings", "Background_install")) {
         set->setting_bools[BACKGROUND_INSTALL] = atoi(value);
+  }
+  else if (MATCH("Settings", "Stop_Daemon_on_close")) {
+        set->setting_bools[STOP_DAEMON_ON_CLOSE] = atoi(value);
   }
 
   return 1;
@@ -724,17 +727,17 @@ bool LoadOptions(ItemzSettings *set) {
 
   //"http://IFUpdate.pkg-zone.com"
   dump = SEL_RESET;
-  set->setting_bools[Daemon_on_start] = true;
+  set->setting_bools[DAEMON_ON_START] = true;
   set->Dump_opt = SEL_DUMP_ALL;
   get->setting_bools[BACKGROUND_INSTALL] = false;
   set->sort_cat = NO_CATEGORY_FILTER;
   set->sort_by = multi_select_options::NA_SORT;
-  set->setting_bools[using_sb] = true;
+  set->setting_bools[USING_SB] = true;
   set->setting_bools[INTERNAL_UPDATE] = false;
-  set->setting_bools[Show_install_prog] = true;
-  set->setting_bools[Show_Buttons] = true;
-  set->setting_bools[HomeMenu_Redirection] = false;
-  set->setting_bools[cover_message] = true;
+  set->setting_bools[SHOW_INSTALL_PROG] = true;
+  set->setting_bools[SHOW_BUTTONS] = true;
+  set->setting_bools[HOMEMENU_REDIRECTION] = false;
+  set->setting_bools[COVER_MESSAGE] = true;
   set->setting_strings[THEME_NAME] = "Default Theme";
   set->setting_strings[THEME_AUTHOR] = "LM & MZ";
   set->setting_strings[THEME_VERSION] = "1.00";
@@ -745,8 +748,11 @@ bool LoadOptions(ItemzSettings *set) {
   else
     set->setting_strings[DUMPER_PATH] = "/mnt/usb0";
 
-  set->setting_strings[FNT_PATH] =
-      "/system_ex/app/NPXS20113/bdjstack/lib/fonts/SCE-PS3-RD-R-LATIN.TTF";
+  set->setting_strings[FNT_PATH] = asset_path("fonts/default.ttf");
+  if(!if_exists(set->setting_strings[FNT_PATH].c_str())) {
+    log_error("Default Font not found, using a diffferent system font");
+    set->setting_strings[FNT_PATH] = "/system_ex/app/NPXS20113/bdjstack/lib/fonts/SCE-PS3-RD-R-LATIN.TTF";
+  }
   /* Initialize INI structure */
   if (usb_num != -1) {
     set->setting_strings[INI_PATH] =
@@ -778,9 +784,8 @@ bool LoadOptions(ItemzSettings *set) {
     set->setting_strings[INI_PATH] = "/user/app/ITEM00001/settings.ini";
   }
 
-  if (set->setting_bools[using_theme] &&
-      (set->setting_bools[using_theme] =
-           if_exists(APP_PATH("theme/theme.ini")))) {
+  if (set->setting_bools[USING_THEME] &&
+           if_exists(APP_PATH("theme/theme.ini"))) {
     log_debug("[THEME] Using Theme detected");
     log_debug("[THEME] Getting Theme Info");
 
@@ -789,7 +794,7 @@ bool LoadOptions(ItemzSettings *set) {
     t.has_font = false;
     if (ini_parse(APP_PATH("theme/theme.ini"), theme_info, &t) < 0) {
       log_error("[THEME] Failed to get Theme Info");
-      set->setting_bools[using_theme] = false;
+      set->setting_bools[USING_THEME] = false;
       goto no_theme;
     }
 
@@ -830,12 +835,12 @@ bool LoadOptions(ItemzSettings *set) {
       if (!if_exists(set->setting_strings[IMAGE_PATH].c_str())) {
         fmt::print("[THEME] Image not found, looked @ {}",
                    set->setting_strings[IMAGE_PATH]);
-        set->setting_bools[has_image] = t.is_image = false;
+        set->setting_bools[HAS_IMAGE] = t.is_image = false;
       } else {
         fmt::print("[THEME] Image found @ {}",
                    set->setting_strings[IMAGE_PATH]);
-        set->setting_bools[has_image] = true;
-        set->setting_bools[using_sb] = false;
+        set->setting_bools[HAS_IMAGE] = true;
+        set->setting_bools[USING_SB] = false;
       }
     } else {
       log_debug("[THEME] No Image being used");
@@ -843,11 +848,11 @@ bool LoadOptions(ItemzSettings *set) {
           fmt::format("{}/shader.bin", APP_PATH("theme"));
       if (!if_exists(set->setting_strings[SB_PATH].c_str())) {
         log_error("[THEME] Shader not found");
-        set->setting_bools[using_sb] = t.using_sb = false;
+        set->setting_bools[USING_SB] = t.using_sb = false;
       } else {
         log_debug("[THEME] Shader found");
-        set->setting_bools[using_sb] = true;
-        set->setting_bools[has_image] = false;
+        set->setting_bools[USING_SB] = true;
+        set->setting_bools[HAS_IMAGE] = false;
       }
     }
 
@@ -855,9 +860,9 @@ bool LoadOptions(ItemzSettings *set) {
   }
 no_theme:
   if (!set->setting_strings[IMAGE_PATH].empty() &&
-      !set->setting_bools[has_image]) {
-    set->setting_bools[has_image] = true;
-    set->setting_bools[using_sb] = false;
+      !set->setting_bools[HAS_IMAGE]) {
+    set->setting_bools[HAS_IMAGE] = true;
+    set->setting_bools[USING_SB] = false;
   }
   log_debug("Starting Lang.");
   uint32_t lang = PS4GetLang();
@@ -938,16 +943,17 @@ no_theme:
   fmt::print("set->RESTRICTED: {}", set->setting_bools[INTERNAL_UPDATE]);
 
   log_info("set->Daemon_...   : %s",
-           set->setting_bools[Daemon_on_start] ? "ON" : "OFF");
-  log_info("set->HomeMen...   : %s", set->setting_bools[HomeMenu_Redirection]
+           set->setting_bools[DAEMON_ON_START] ? "ON" : "OFF");
+  log_info("set->HomeMen...   : %s", set->setting_bools[HOMEMENU_REDIRECTION]
                                          ? "ItemzFlow (ON)"
                                          : "Orbis (OFF)");
   log_info("set->sort_by      : %i", set->sort_by);
-  log_info("set->Cover_message : %i", set->setting_bools[Cover_message]);
-  log_info("set->using_theme  : %i", set->setting_bools[using_theme]);
+  log_info("set->Cover_message : %i", set->setting_bools[COVER_MESSAGE]);
+  log_info("set->using_theme  : %i", set->setting_bools[USING_THEME]);
+  log_info("set->Stop_Daemon_on_close", set->setting_bools[STOP_DAEMON_ON_CLOSE]);
   log_info("set->Dump_opt     : %i", set->Dump_opt);
   log_info("set->Install_prog.: %s",
-           set->setting_bools[Show_install_prog] ? "ON" : "OFF");
+           set->setting_bools[SHOW_INSTALL_PROG] ? "ON" : "OFF");
   log_info("set->Lang         : %s : %i", Language_GetName(lang).c_str(),
            set->lang);
 
@@ -960,17 +966,17 @@ bool SaveOptions(ItemzSettings *set) {
       "\nShow_install_prog={3:d}\nHomeMenu_Redirection={4:d}\nDaemon_on_start={"
       "5:d}\ncover_message={6:d}\nDumper_Path={7:}\nMP3_Path={8:}\nShow_"
       "Buttons={9:d}\nEnable_Theme={10:d}\nImage_path={11:}\nReflections={12:d}"
-      "\nFuse_IP={13:}\n{14:}={15:d}\nBackground_install={16:d}",
+      "\nFuse_IP={13:}\n{14:}={15:d}\nBackground_install={16:d}\nStop_Daemon_on_close={17:d}",
       (int)set->sort_by, (int)set->sort_cat, set->setting_strings[FNT_PATH],
-      set->setting_bools[Show_install_prog],
-      set->setting_bools[HomeMenu_Redirection],
-      set->setting_bools[Daemon_on_start], set->setting_bools[cover_message],
+      set->setting_bools[SHOW_INSTALL_PROG],
+      set->setting_bools[HOMEMENU_REDIRECTION],
+      set->setting_bools[DAEMON_ON_START], set->setting_bools[COVER_MESSAGE],
       set->setting_strings[DUMPER_PATH], set->setting_strings[MP3_PATH],
-      set->setting_bools[Show_Buttons], set->setting_bools[using_theme],
+      set->setting_bools[SHOW_BUTTONS], set->setting_bools[USING_THEME],
       set->setting_strings[IMAGE_PATH], use_reflection,
       set->setting_strings[FUSE_PC_NFS_IP],
       set->setting_bools[INTERNAL_UPDATE] ? "Internal_update" : "RESTRICTED",
-      set->setting_bools[INTERNAL_UPDATE], set->setting_bools[BACKGROUND_INSTALL]);
+      set->setting_bools[INTERNAL_UPDATE], set->setting_bools[BACKGROUND_INSTALL], set->setting_bools[STOP_DAEMON_ON_CLOSE]);
 
   std::ofstream out(set->setting_strings[INI_PATH]);
   if (out.bad()) {
@@ -989,18 +995,18 @@ bool SaveOptions(ItemzSettings *set) {
   fmt::print("set->fuse_ip: {}", set->setting_strings[FUSE_PC_NFS_IP]);
 
   log_info("set->Daemon_...   : %s",
-           set->setting_bools[Daemon_on_start] ? "ON" : "OFF");
-  log_info("set->HomeMen...   : %s", set->setting_bools[HomeMenu_Redirection]
+           set->setting_bools[DAEMON_ON_START] ? "ON" : "OFF");
+  log_info("set->HomeMen...   : %s", set->setting_bools[HOMEMENU_REDIRECTION]
                                          ? "ItemzFlow (ON)"
                                          : "Orbis (OFF)");
   log_info("set->sort_by      : %i", set->sort_by);
-  log_info("set->Show_Buttons : %i", set->setting_bools[Show_Buttons]);
-  log_info("set->cover_message : %i", set->setting_bools[cover_message]);
+  log_info("set->Show_Buttons : %i", set->setting_bools[SHOW_BUTTONS]);
+  log_info("set->cover_message : %i", set->setting_bools[COVER_MESSAGE]);
   log_info("set->Dump_opt     : %i", set->Dump_opt);
-  log_info("set->using_theme  : %i", set->setting_bools[using_theme]);
+  log_info("set->using_theme  : %i", set->setting_bools[USING_THEME]);
   log_info("set->RESTIRCTED   : %i", set->setting_bools[INTERNAL_UPDATE]);
   log_info("set->Install_prog.: %s",
-           set->setting_bools[Show_install_prog] ? "ON" : "OFF");
+           set->setting_bools[SHOW_INSTALL_PROG] ? "ON" : "OFF");
   log_info("set->Lang         : %s : %i", Language_GetName(set->lang).c_str(),
            set->lang);
   log_info("==========================================================");
@@ -1198,6 +1204,15 @@ int progstart(const char *format, ...) {
   dialogParam.progBarParam->msg = &buff[0];
 
   sceMsgDialogOpen(&dialogParam);
+
+  while(1) {
+	  int stat = sceMsgDialogUpdateStatus();
+	  if( stat == ORBIS_COMMON_DIALOG_STATUS_FINISHED ) {
+		   break;
+	   } else if( stat == ORBIS_COMMON_DIALOG_STATUS_RUNNING ) {
+		   	break;
+	   }
+  }
 
   return ret;
 }
@@ -1982,9 +1997,9 @@ bool install_IF_Theme(std::string theme_path) {
   log_debug("[THEME] ========  End of Theme Info =======");
   log_debug("[THEME] Freeing Theme Info ...");
 
-  get->setting_bools[has_image] = t.is_image;
-  get->setting_bools[using_sb] = t.using_sb;
-  get->setting_bools[using_theme] = true;
+  get->setting_bools[HAS_IMAGE] = t.is_image;
+  get->setting_bools[USING_SB] = t.using_sb;
+  get->setting_bools[USING_THEME] = true;
 
   if (!SaveOptions(get)) {
     log_error("[THEME] Failed to save Theme Options");
@@ -2012,7 +2027,7 @@ err:
   log_error("[THEME][ERROR] Resetting IF Settings  ...");
   get->setting_strings[FNT_PATH] =
       "/system_ex/app/NPXS20113/bdjstack/lib/fonts/SCE-PS3-RD-R-LATIN.TTF";
-  get->setting_bools[using_theme] = false;
+  get->setting_bools[USING_THEME] = false;
   if (!SaveOptions(get))
     log_error("[THEME][ERROR] Failed to save Theme Options");
 
@@ -2364,9 +2379,9 @@ bool count_dlc(std::string tid, int &vaild_dlcs, int &avail_dlcs,
       query_dlc_database(tid);
   // print out dlc_info
   for (const auto &result : dlc_info) {
-    std::cout << "PKG: " << std::get<0>(result)
-              << " | DLC Name: " << std::get<1>(result)
-              << " | Full Content ID: " << std::get<2>(result) << std::endl;
+    log_info("Path: %s | DLC Name: %s | Full Content ID: %s",
+             std::get<0>(result).c_str(), std::get<1>(result).c_str(),
+             std::get<2>(result).c_str());
   }
 
   std::string addcont_path_str;
@@ -2424,9 +2439,9 @@ bool count_dlc(std::string tid, int &vaild_dlcs, int &avail_dlcs,
       }
     } else {
       log_error("Path does not exist or is not a directory: %s",
-                addcont_path_str.c_str());
+                pkg_path.c_str());
       // ani_notify(NOTIFI::WARNING, "No DLC is Installed", "");
-      return false;
+          continue;
     }
   }
 
@@ -2633,6 +2648,7 @@ bool GetVappDetails(item_t &item) {
       "IRO_TAG", std::to_string(sfo.GetValueFor<int>("IRO_TAG"))));
 
   item.info.version = item.extra_data.extra_sfo_data["APP_VER"];
+  item.info.id = sfo.GetValueFor<std::string>("TITLE_ID");
 
   return true;
 }
@@ -2675,6 +2691,10 @@ void UpdateParamSfo(std::string path) {
 }
 int sys_unmount(const char *syspath, int flags) {
   return syscall(22, syspath, flags);
+}
+bool IsVappmounted(std::string syspath) {
+  std::string SfoPath = syspath + "/sce_sys/param.sfo";
+  return if_exists(SfoPath.c_str());
 }
 bool ForceUnmountVapp(std::string syspath) {
 

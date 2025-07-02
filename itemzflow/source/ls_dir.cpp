@@ -46,12 +46,50 @@ std::vector<std::string> Host_app_mounted_dirs;
 #if defined(__ORBIS__)
 #include <sys/uio.h>
 #include <sys/mount.h>
+struct NonStupidIovec {
+  const void *iov_base;
+  size_t iov_length;
 
+  constexpr NonStupidIovec(const char *str)
+      : iov_base(str), iov_length(__builtin_strlen(str) + 1) {}
+  constexpr NonStupidIovec(const char *str, size_t length)
+      : iov_base(str), iov_length(length) {}
+};
+
+constexpr NonStupidIovec operator"" _iov(const char *str, unsigned long len) {
+  return {str, len + 1};
+}
+/// extern "C" int nmount(struct iovec *, unsigned long, int);
+bool remount(const char *dev, const char *path) {
+  NonStupidIovec iov[]{
+      "fstype"_iov, "nullfs"_iov, "fspath"_iov, {path},
+      "target"_iov, {dev},        "rw"_iov,     {nullptr, 0},
+  };
+  constexpr size_t iovlen = sizeof(iov) / sizeof(iov[0]);
+  bool success = nmount(reinterpret_cast<struct iovec *>(iov), iovlen, 0x80000LL) == 0;
+  log_info("Remount status: %s", success ? "Success" : strerror(errno));
+  log_info("From : %s, To: %s", dev, path);
+  if(errno == ENOTCONN){
+    msgok(MSG_DIALOG::WARNING, "Restart your PS4 and make sure next time when you close itemzflow you do it via pressing circle twice");
+    return success;
+  }
+  if(errno == EBADF || errno == EPERM || errno == EIO){
+    log_info("trying to unmount");
+    sys_unmount(path, 0x80000LL);
+    success = nmount(reinterpret_cast<struct iovec *>(iov), iovlen, 0x80000LL) == 0;
+    log_info("Remount status: %s", success ? "Success" : strerror(errno));
+  }
+  if(success && strstr(dev, "/hostapp") != NULL){
+    Host_app_mounted_dirs.push_back(path);
+  }
+  return success;
+}
 
 void unmount_atexit(){
-
-  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
-  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+    for(auto dir : Host_app_mounted_dirs){
+        log_info("Unmounting %s", dir.c_str());
+        ForceUnmountVapp(dir);
+    }
 }
 #endif
 
@@ -282,11 +320,241 @@ bool is_vapp(std::string tid)
     return false;
 }
 
+int countTotalDirectories(const std::string &dir) {
+  int count = 0;
+  DIR *dp = opendir(dir.c_str());
+  if (dp != nullptr) {
+    struct dirent *entry;
+    while ((entry = readdir(dp)) != nullptr) {
+      if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 &&
+          strcmp(entry->d_name, "..") != 0) {
+        std::string path = dir + "/" + entry->d_name;
+        if (getDirectoryDepth(path) > 5) {
+          log_debug("Skipping %s for depth", path.c_str());
+          continue;
+        }
+        count +=
+            1 + countTotalDirectories(path); // Count this directory and recurse
+      }
+    }
+    closedir(dp);
+  }
+  return count;
+}
+
+bool checkSELFMagic(const std::string &ebootPath) {
+  std::ifstream SelfFile(ebootPath, std::ios::binary);
+  if (!SelfFile.good())
+    return false;
+
+  char magic[4];
+  SelfFile.read(magic, 4);
+  SelfFile.close();
+
+  const char expectedMagic[4] = {0x4F, 0x15, 0x3D, 0x1D};
+  return std::memcmp(magic, expectedMagic, 4) == 0;
+}
+
+bool ChechSelfsinDir(const std::string& directory) {
+    DIR* dir = NULL;
+    struct dirent* entry = NULL;
+
+    // Open the directory
+    dir = opendir(directory.c_str());
+    if (!dir) {
+        perror("Unable to open directory");
+        return false;
+    }
+
+    // Read the directory entries
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip the current and parent directories
+        if (std::string(entry->d_name) == "." || std::string(entry->d_name) == "..") {
+            continue;
+        }
+
+        // Construct the full path
+        std::string fullPath = directory + "/" + entry->d_name;
+
+        // Check file extensions
+        if (fullPath.size() >= 4 && (fullPath.compare(fullPath.size() - 4, 4, ".prx") == 0 || 
+                                     fullPath.compare(fullPath.size() - 5, 5, ".sprx") == 0)) {
+            // Check the magic number
+            if (checkSELFMagic(fullPath)) {
+                log_info("File %s has the correct magic number.", fullPath.c_str());
+            } else {
+                log_error("File %s does not have the correct magic number.", fullPath.c_str());
+                return false;
+            }
+        }
+    }
+
+    // Close the directory
+    closedir(dir);
+    return true;
+}
+
+void findGamesRecursive(const std::string &dir, int depth,
+                        std::vector<item_t> &games, int &directoriesScanned,
+                        int totalDirectories) {
+  const char *directory = dir.c_str();
+
+  if (depth == 0) {
+    log_debug("Reached max depth @ %s", directory);
+    return;
+  }
+
+  if (dir.rfind("/user/data") != std::string::npos) {
+    log_debug("%s is not allowed", directory);
+    return;
+  }
+
+  DIR *dp = opendir(directory);
+  if (dp == nullptr) {
+    log_error("Error opening directory: %s", directory);
+    return;
+  }
+#if defined(__ORBIS__)
+  sceMsgDialogProgressBarSetMsg(
+      0,
+      fmt::format("Scanning for FG Apps\n\nCurrent dir: {}", dir).c_str());
+#endif
+
+  struct dirent *entry;
+  while ((entry = readdir(dp)) != nullptr) {
+    if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 &&
+        strcmp(entry->d_name, "..") != 0) {
+      // Check for game files in the current directory
+      std::string filePath = dir + "/" + entry->d_name;
+      item_t gameInfo;
+      gameInfo.info.sfopath = filePath + "/sce_sys/param.sfo";
+      gameInfo.info.picpath = filePath + "/sce_sys/icon0.png";
+      gameInfo.info.vapp_path = filePath;
+
+      if (if_exists(gameInfo.info.sfopath.c_str())) {
+#if defined(__ORBIS__)
+          if (!GetVappDetails(gameInfo)) {
+            log_error("Failed to get json values for %s", gameInfo.info.sfopath.c_str());
+            continue;
+          }
+#endif          
+          log_info("Found game: %s", gameInfo.info.name.c_str());
+          games.push_back(gameInfo);
+      }
+      // Recurse into subdirectory
+      findGamesRecursive(dir + "/" + entry->d_name, depth - 1, games,
+                         directoriesScanned, totalDirectories);
+    }
+  }
+  closedir(dp);
+
+  directoriesScanned++;
+#if defined(__ORBIS__)
+  float progress =
+      (static_cast<float>(directoriesScanned) / totalDirectories) * 100;
+  sceMsgDialogProgressBarSetValue(0, progress);
+#endif
+}
+
 // Modified findGames function
 bool ScanForVapps() {
-  
-  // EXPERIMENTAL NOT AVAILABLE AT RELEASE
-  // COME BACK WHEN ITS NO LONGER EXPERIMENTAL
+  Timer timer;
+  std::vector<item_t> games;
+  int maxDepth = 5; // Set the recursion depth
+  std::vector<std::string> directories = {"/data",     "/mnt/usb0", "/mnt/usb1",
+                                          "/mnt/usb2", "/mnt/usb3", "/mnt/ext1",
+                                          "/mnt/ext0", "/user", "/hostapp"};
+#if defined(__ORBIS__)
+  progstart("Scanning for FG apps...\n\nCounting the directories");
+#endif
+  int totalDirectories = 0;
+  for (const auto &dir : directories) {
+    totalDirectories += countTotalDirectories(dir);
+  }
+
+  int directoriesScanned = 0;
+  for (const auto &dir : directories) {
+    findGamesRecursive(dir, maxDepth, games, directoriesScanned,
+                       totalDirectories);
+  }
+  // display all the apps in the vector
+  std::stringstream ss;
+  ss << "Found " << games.size()
+     << " FG Apps, Would you like to Add them? (existing Games will be "
+        "replaced, only 1 app per title id)\n";
+  ss << "----------------------------------------\n";
+  for (auto game : games) {
+    log_debug("Found game: %s", game.info.name.c_str());
+    ss << "Game Name: " << game.info.name << " (" << game.info.vapp_path
+       << ")\n";
+  }
+  if (games.empty()) {
+    msgok(MSG_DIALOG::WARNING, "No FG Apps found");
+    return false;
+  }
+#if defined(__ORBIS__)
+  if (Confirmation_Msg(ss.str().c_str()) == NO) {
+    log_debug("User cancelled");
+    return false;
+  }
+#endif
+
+  loadmsg("Attempting to add FG Apps...");
+
+  int app_added = 0;
+  std::stringstream add_games_msg;
+  add_games_msg << "---------------------- FG Apps Added --------------------\n";
+  for (auto &game : games) {
+    std::string sys_path = "/system_ex/app/" + game.info.id;
+    std::string metapath = "/user/appmeta/" + game.info.id + "/";
+    std::string sce_sys = sys_path + "/sce_sys";
+    std::string trophy_path = sce_sys + "/trophy/trophy00.trp"; ///mnt/sandbox/CUSA03980_000/download0
+    std::string dl0_info = "/user/download/" + game.info.id + "/download0_info.dat";
+    mkdir(sys_path.c_str(), 0777);
+
+    mkdir("/user/download/", 0777);
+
+    log_info("fullpath: %s", game.info.vapp_path.c_str());
+#if defined(__ORBIS__)
+    if (EditDataIFPS5DB(game.info.id, game.info.name, game.info.vapp_path) &&
+        Fix_Game_In_DB(game, false)) {
+
+       if(!IsVappmounted(game.info.vapp_path)){
+           if (!remount(game.info.vapp_path.c_str(), sys_path.c_str())) {
+               log_info("Remount failed");
+               continue;
+            }
+        }
+
+        if(checkTrophyMagic(trophy_path.c_str())){
+           log_error("Trophy file is signed, removing...");
+           unlink(trophy_path.c_str());
+        }
+        else{
+           log_error("Trophy file is not signed, skipping...");
+        }
+
+
+        mkdir(std::string("/user/download/" + game.info.id).c_str(), 0777);
+        touch_file(dl0_info.c_str());
+
+       // if (!if_exists(metapath.c_str())){
+       rmtree(metapath.c_str());
+       unlink(metapath.c_str());
+       mkdir(metapath.c_str(), 0777);
+       copy_dir(game.info.vapp_path + "/sce_sys", metapath);
+       // }
+
+      add_games_msg << "Game Name: " << game.info.name << " ("
+                    << game.info.vapp_path << ")\n";
+      app_added++;
+    }
+#endif
+  }
+
+  msgok(MSG_DIALOG::NORMAL,
+        fmt::format("Added {}/{} FG Apps Successfully\n{}", app_added, games.size(), add_games_msg.str()));
+
   return true;
 }
 
