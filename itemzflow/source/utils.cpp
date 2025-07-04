@@ -911,6 +911,9 @@ no_theme:
           asset_path("fonts/NotoSansKR-Regular.ttf");
       break;
     case 21:
+      set->setting_strings[FNT_PATH] =
+          asset_path("fonts/NotoSansArabic-Regular.ttf");
+      break;
     case 23:
     case 24:
     case 25:
