@@ -647,7 +647,7 @@ int fuse_kernel_patches_1250(struct thread *td) {
   // avoid enforce_dev_perms checks
   // default prison_priv_check to 0
   kernel_ptr[0x317866] = 0;
-  kernel_ptr[0x491404] = 0x84;
+  kernel_ptr[0x4913F5] = 0x84;
   // skip devkit/testkit/dipsw check in fuse_loader
   kernel_ptr[0x4953CE] = 0xEB;
   kernel_ptr[0x4953CF] = 0x1B;
@@ -656,7 +656,7 @@ int fuse_kernel_patches_1250(struct thread *td) {
   kernel_ptr[0x48FE04] = 0x0;
   // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
   // fuse_close_device
-  kernel_ptr[0x48FF18] = 0xEB;
+  kernel_ptr[0x48FF02] = 0xEB;
   // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
   // fuse_poll_device
   kernel_ptr[0x490452] = 0x84;
@@ -672,7 +672,7 @@ int fuse_kernel_patches_1250(struct thread *td) {
   cpu_enable_wp();
 
   int (*fuse_loader)(void *m, int op, void *arg) =
-      (void *)(kernel_base + 0x490d10);
+      (void *)(kernel_base + 0x4953A0);
   fuse_loader(NULL, 0, NULL);
 
   return 0;
