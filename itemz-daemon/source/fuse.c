@@ -629,6 +629,55 @@ int fuse_kernel_patches_1200(struct thread *td) {
   return 0;
 }
 
+int fuse_kernel_patches_1250(struct thread *td) {
+
+  void *kernel_base = &((uint8_t *)kernelRdmsr(0xC0000082))[-0x1C0];
+  uint8_t *kernel_ptr = (uint8_t *)kernel_base;
+  int *ksuser_enabled = (int *)(kernel_base + 0x21AD2AC);
+
+  if (*ksuser_enabled == 1) // kernel already patched
+    return 0;
+
+  cpu_disable_wp();
+  struct vfsconf *p = (struct vfsconf *)(kernel_base + 0x127FA48);
+  // suser_enabled in priv_check_cred
+  *ksuser_enabled = 1;
+  // add jail friendly for fuse file system
+  p->vfc_flags = 0x00400000 | 0x00080000;
+  // avoid enforce_dev_perms checks
+  // default prison_priv_check to 0
+  kernel_ptr[0x317866] = 0;
+  kernel_ptr[0x491404] = 0x84;
+  // skip devkit/testkit/dipsw check in fuse_loader
+  kernel_ptr[0x4953CE] = 0xEB;
+  kernel_ptr[0x4953CF] = 0x1B;
+  // skip sceSblACMgrIsSyscoreProcess check in fuse_open_device
+  kernel_ptr[0x48FE05] = 0xEB;
+  kernel_ptr[0x48FE04] = 0x0;
+  // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
+  // fuse_close_device
+  kernel_ptr[0x48FF18] = 0xEB;
+  // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
+  // fuse_poll_device
+  kernel_ptr[0x490452] = 0x84;
+  // skip sceSblACMgrIsSyscoreProcess check in fuse_vfsop_mount
+  kernel_ptr[0x4943B7] = 0x85;
+  // skip sceSblACMgrIsMinisyscore/unknown check in fuse_vfsop_unmount
+  kernel_ptr[0x494B0A] = 0x84;
+  // skip sceSblACMgrIsSystemUcred check in fuse_vfsop_statfs
+  kernel_ptr[0x494EBD] = 0xEB;
+  kernel_ptr[0x494EBE] = 0x04;
+  kernel_ptr[0x48FD0E] = 0xB6;
+  // patch kernel
+  cpu_enable_wp();
+
+  int (*fuse_loader)(void *m, int op, void *arg) =
+      (void *)(kernel_base + 0x490d10);
+  fuse_loader(NULL, 0, NULL);
+
+  return 0;
+}
+
 bool fuse_fw_supported() {
   switch (ps4_fw_version()) {
   case 0x507:
@@ -672,6 +721,10 @@ bool fuse_fw_supported() {
   case 0x1200:
   case 0x1202:
     syscall(11, fuse_kernel_patches_1200);
+    return true;
+  case 0x1250:
+  case 0x1252:
+    syscall(11, fuse_kernel_patches_1250);
     return true;
   default: {
     log_info("fuse: Unsupported firmware version, exiting ...");
