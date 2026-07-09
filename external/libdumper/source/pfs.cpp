@@ -29,14 +29,19 @@ namespace pfs {
         uint64_t bytes;
         uint64_t ix = 0;
         if(std::filesystem::exists(fname)){
-            log_debug("File already exists: %s", fname.c_str());
-            size -= bytes;
-            ix++;
-            pfs_copied += bytes;
-            if (pfs_copied > pfs_size) pfs_copied = pfs_size;
-            pfs_progress = (uint64_t)(((float)pfs_copied / pfs_size) * 100.f);
-            return;
-        }
+		uint64_t existing_size = std::filesystem::file_size(fname);
+    		if(existing_size == size) {
+        		log_debug("Skipping already complete file: %s (%llu bytes)", fname.c_str(), size);
+        		pfs_copied += size;
+        		if (pfs_copied > pfs_size) pfs_copied = pfs_size;
+        		pfs_progress = (uint64_t)(((float)pfs_copied / pfs_size) * 100.f);
+        		return;
+    		} else {
+			log_debug("Partial file detected, redumping: %s (has %llu, need %llu)", 
+                  		fname.c_str(), existing_size, size);
+        		std::filesystem::remove(fname);
+    		}
+	}
         int fd = sceKernelOpen(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NONBLOCK, 0777);
         log_info("---- name: %s, ptr %p, sz %zu, FD: %i", fname.c_str(), ptr, size, fd);
         if (fd > 0)

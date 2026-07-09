@@ -207,8 +207,7 @@ bool __dump(const Dumper_Options &options) {
 
   dumping_semaphore /= output_directory + ".dumping";
   if (std::filesystem::exists(dumping_semaphore, ec)) {
-    log_error("This dump is currently dumping or closed unexpectedly! Please "
-              "delete existing dump to enable dumping.");
+    log_info("Interrupted dump detected for %s, resuming...", title_id.c_str());
   }
 
   // Check for .complete semaphore
