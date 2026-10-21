@@ -796,6 +796,125 @@ int fuse_kernel_patches_1302(struct thread *td) {
   return 0;
 }
 
+int fuse_kernel_patches_1350(struct thread *td) {
+
+  void *kernel_base = &((uint8_t *)kernelRdmsr(0xC0000082))[-0x1C0];
+  uint8_t *kernel_ptr = (uint8_t *)kernel_base;
+  int *ksuser_enabled = (int *)(kernel_base + 0x21AD2AC);
+
+  if (*ksuser_enabled == 1) // kernel already patched
+    return 0;
+
+  cpu_disable_wp();
+  struct vfsconf *p = (struct vfsconf *)(kernel_base + 0x1A7FA48);
+  // suser_enabled in priv_check_cred
+  *ksuser_enabled = 1;
+  // add jail friendly for fuse file system
+  p->vfc_flags = 0x00400000 | 0x00080000;
+  // avoid enforce_dev_perms checks
+
+  // default prison_priv_check to 0
+  kernel_ptr[0x317BE6] = 0;
+  kernel_ptr[0x491865] = 0x84;
+
+  // skip devkit/testkit/dipsw check in fuse_loader
+  kernel_ptr[0x49583E] = 0xEB;
+  kernel_ptr[0x49583F] = 0x1B;
+
+  // skip sceSblACMgrIsSyscoreProcess check in fuse_open_device
+  kernel_ptr[0x490274] = 0x0;
+  kernel_ptr[0x490275] = 0xEB;
+
+  // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
+  // fuse_close_device
+  kernel_ptr[0x490372] = 0xEB;
+
+  // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
+  // fuse_poll_device
+  kernel_ptr[0x4908C2] = 0x84;
+
+  // skip sceSblACMgrIsSyscoreProcess check in fuse_vfsop_mount
+  kernel_ptr[0x494826] = 0x85;
+
+  // skip sceSblACMgrIsMinisyscore/unknown check in fuse_vfsop_unmount
+  kernel_ptr[0x494F7A] = 0x84;
+
+  // skip sceSblACMgrIsSystemUcred check in fuse_vfsop_statfs
+  kernel_ptr[0x49532D] = 0xEB;
+  kernel_ptr[0x49532E] = 0x04;
+
+  kernel_ptr[0x49017E] = 0xB6;
+
+  // patch kernel
+  cpu_enable_wp();
+
+  int (*fuse_loader)(void *m, int op, void *arg) =
+      (void *)(kernel_base + 0x495810);
+  fuse_loader(NULL, 0, NULL);
+
+  return 0;
+}
+
+int fuse_kernel_patches_1352(struct thread *td) {
+
+  void *kernel_base = &((uint8_t *)kernelRdmsr(0xC0000082))[-0x1C0];
+  uint8_t *kernel_ptr = (uint8_t *)kernel_base;
+  int *ksuser_enabled = (int *)(kernel_base + 0x21ad2ac);
+
+  if (*ksuser_enabled == 1) // kernel already patched
+    return 0;
+
+  cpu_disable_wp();
+  struct vfsconf *p = (struct vfsconf *)(kernel_base + 0x1A7FA48);
+  // suser_enabled in priv_check_cred
+  *ksuser_enabled = 1;
+  // add jail friendly for fuse file system
+  p->vfc_flags = 0x00400000 | 0x00080000;
+  // avoid enforce_dev_perms checks
+
+  // default prison_priv_check to 0
+  kernel_ptr[0x317FE6] = 0;
+  kernel_ptr[0x491C65] = 0x84;
+
+  // skip devkit/testkit/dipsw check in fuse_loader
+  kernel_ptr[0x495C3E] = 0xEB;
+  kernel_ptr[0x495C3F] = 0x1B;
+
+  // skip sceSblACMgrIsSyscoreProcess check in fuse_open_device
+  kernel_ptr[0x490674] = 0x0;
+  kernel_ptr[0x490675] = 0xEB;
+
+  // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
+  // fuse_close_device
+  kernel_ptr[0x490772] = 0xEB;
+
+  // skip sceSblACMgrIsDebuggerProcess/sceSblACMgrIsSyscoreProcess check in
+  // fuse_poll_device
+  kernel_ptr[0x490CC2] = 0x84;
+
+  // skip sceSblACMgrIsSyscoreProcess check in fuse_vfsop_mount
+  kernel_ptr[0x494C27] = 0x85;
+
+  // skip sceSblACMgrIsMinisyscore/unknown check in fuse_vfsop_unmount
+  kernel_ptr[0x49537A] = 0x84;
+
+  // skip sceSblACMgrIsSystemUcred check in fuse_vfsop_statfs
+  kernel_ptr[0x49572D] = 0xEB;
+  kernel_ptr[0x49572E] = 0x04;
+
+  kernel_ptr[0x49057E] = 0xB6;
+
+  // patch kernel
+  cpu_enable_wp();
+
+  int (*fuse_loader)(void *m, int op, void *arg) =
+      (void *)(kernel_base + 0x495C10);
+  fuse_loader(NULL, 0, NULL);
+
+  return 0;
+}
+
+
 bool fuse_fw_supported() {
   switch (ps4_fw_version()) {
   case 0x507:
@@ -848,7 +967,14 @@ bool fuse_fw_supported() {
     syscall(11, fuse_kernel_patches_1300);
     return true;
   case 0x1302:
+  case 0x1304:
     syscall(11, fuse_kernel_patches_1302);
+    return true;
+  case 0x1350:
+    syscall(11, fuse_kernel_patches_1350);
+    return true;
+  case 0x1352:
+    syscall(11, fuse_kernel_patches_1352);
     return true;
   default: {
     log_info("fuse: Unsupported firmware version, exiting ...");
