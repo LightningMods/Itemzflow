@@ -22,6 +22,7 @@ typedef struct {
     const char* title_id;
     Dump_Options opt;
     const char* title;
+    bool sb_copy = false; // accepted for app compatibility; missing files are always skipped
 } Dumper_Options;
 
 #define YES 1
